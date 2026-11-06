@@ -106,6 +106,7 @@ erDiagram
     CIRCLE ||--o{ LOG_ENTRY : has
     CIRCLE ||--o{ URGENT_REQUEST : has
     URGENT_REQUEST ||--o{ DELIVERY : fans_out_to
+    CIRCLE ||--o{ CIRCLE_INVITE : invites
     CIRCLE ||--o{ PRODUCT : remembers
     LIST_ITEM }o--o| PRODUCT : matches
     USER ||--o{ DEVICE : owns
@@ -114,6 +115,7 @@ erDiagram
     CIRCLE { uuid id string name string timezone int change_seq }
     USER { uuid id string display_name string preferred_language string phone_hash }
     MEMBERSHIP { uuid circle_id uuid user_id enum role }
+    CIRCLE_INVITE { uuid id uuid circle_id string token_hash enum role uuid created_by timestamp expires_at timestamp accepted_at uuid accepted_by }
     LIST_ITEM { uuid id uuid circle_id string text string original_language int qty string unit string shop_group enum status uuid claimed_by int version uuid product_id }
     ITEM_EVENT { bigint seq uuid item_id uuid actor enum type jsonb payload timestamp at }
     LOG_ENTRY { uuid id uuid circle_id uuid author string body string lang enum category timestamp client_ts timestamp server_ts }
@@ -145,8 +147,12 @@ All mutating calls require an `Idempotency-Key` header. All endpoints are scoped
 
 ### Circles and members
 - `POST /v1/circles`
-- `POST /v1/circles/{id}/invites`, `POST /v1/invites/{token}/accept`
+- `POST /v1/circles/{id}/invites` (`id`, `role`, client-generated high-entropy `token`)
+- `POST /v1/invites/{token}/accept`
+- `GET /v1/invites/{token}` previews the circle and assigned role before acceptance.
 - `GET /v1/circles/{id}/members`
+
+Invite links are created by circle owners for `FAMILY`, `HELPER`, or `VIEWER` roles (never `OWNER`). They expire after seven days and can be accepted once. Store only a cryptographic hash of the bearer token; do not log invite tokens. Acceptance and membership creation happen in one database transaction. Repeating acceptance by the same user is safe; another user cannot reuse an accepted invite.
 
 ### Shopping list
 - `POST /v1/circles/{id}/items` (`text`, `qty`, `photoId?`, `productId?`)

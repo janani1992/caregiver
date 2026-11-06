@@ -17,7 +17,7 @@ Requirements: JDK 21, Maven 3.9+, Node.js 20.19+ or 22.12+, npm, and Docker Comp
 3. In another terminal, start the PWA: `cd frontend && npm install && npm run dev`
 4. Open the Vite URL (normally `http://localhost:5173`). The dev API proxy forwards `/v1` to port 8080.
 
-The development account is configured in `frontend/.env.example`; copy it to `frontend/.env.local` only if you want to use another UUID. Flyway initializes the database on API startup.
+The development account is configured in `frontend/.env.example`; copy it to `frontend/.env.local` only if you want to use another UUID. To try the invite flow, create a link as the default owner, then set `VITE_DEV_USER_ID` in `frontend/.env.local` to a different UUID and reload the invite link as that test account. Flyway initializes the database on API startup.
 
 ## Tests
 
@@ -27,4 +27,8 @@ The development account is configured in `frontend/.env.example`; copy it to `fr
 
 ## Story boundary and follow-ups
 
-Circle creation currently persists circle, owner membership, and idempotency record in one PostgreSQL transaction. Durable database idempotency was used here to make the create operation atomic; reconcile this with the architecture's Redis TTL approach in an ADR before standardizing idempotency across endpoints. `change_seq` begins at zero; define the durable generic change-feed record before implementing sync. Invite acceptance, real authentication, RLS, and post-create circle functionality are not part of this story.
+Circle creation currently persists circle, owner membership, and idempotency record in one PostgreSQL transaction. Durable database idempotency was used here to make the create operation atomic; reconcile this with the architecture's Redis TTL approach in an ADR before standardizing idempotency across endpoints. Circle creation starts `change_seq` at one; invite creation and acceptance advance it transactionally. Define the durable generic change-feed record before implementing sync. Real authentication, RLS, and post-create circle functionality remain future work.
+
+## Story 2: invite a member
+
+Circle owners can create a shareable invite for a `FAMILY`, `HELPER`, or `VIEWER` role. Links expire after seven days. The browser generates a 256-bit bearer token; the API stores only its SHA-256 hash, and invite responses use `Cache-Control: no-store`. The recipient can preview the circle and role before accepting. Membership creation and invite consumption are atomic, and accepting again as the same user is safe. SMS/email delivery and real authentication remain future stories.

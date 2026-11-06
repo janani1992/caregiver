@@ -16,6 +16,8 @@ import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.TestConstructor
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
+import org.springframework.web.context.request.RequestContextHolder
+import org.springframework.web.context.request.ServletRequestAttributes
 import java.util.UUID
 
 @SpringBootTest
@@ -48,6 +50,7 @@ class CircleControllerTest(
             jsonPath("$.id") { value(circleId.toString()) }
             jsonPath("$.name") { value("Care Team") }
             jsonPath("$.role") { value("OWNER") }
+            jsonPath("$.changeSeq") { value(1) }
         }
 
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM circle WHERE id = ?", Int::class.java, circleId))
@@ -129,7 +132,9 @@ class CircleControllerTest(
     class TestAuthConfiguration {
         @Bean
         fun currentUserProvider(): CurrentUserProvider = CurrentUserProvider {
-            UUID.fromString("087a4d5a-9a7b-4ab1-b64f-7c7b00b3e104")
+            val request = RequestContextHolder.currentRequestAttributes() as ServletRequestAttributes
+            request.request.getHeader("X-User-Id")?.let(UUID::fromString)
+                ?: UUID.fromString("087a4d5a-9a7b-4ab1-b64f-7c7b00b3e104")
         }
     }
 }

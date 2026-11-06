@@ -33,7 +33,7 @@ class CircleService(
                 if (existing != null) return@execute verifyReplay(existing, fingerprint)
 
                 jdbc.update(
-                    "INSERT INTO circle (id, name, timezone, created_by, change_seq) VALUES (?, ?, ?, ?, 0)",
+                    "INSERT INTO circle (id, name, timezone, created_by, change_seq) VALUES (?, ?, ?, ?, 1)",
                     request.id, name, timezone, ownerId,
                 )
                 jdbc.update(
@@ -44,7 +44,7 @@ class CircleService(
                     "INSERT INTO idempotency_record (user_id, idempotency_key, request_hash, circle_id) VALUES (?, ?, ?, ?)",
                     ownerId, idempotencyKey, fingerprint, request.id,
                 )
-                CircleResponse(request.id, name, timezone, ownerId, changeSeq = 0)
+                CircleResponse(request.id, name, timezone, ownerId, changeSeq = 1)
             } ?: error("Circle transaction returned no result")
         } catch (_: DuplicateKeyException) {
             // A concurrent retry may win the unique-key race. Read after the failed transaction rolls back.

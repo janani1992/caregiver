@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: care-circle-api
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/carecircle}
+    username: ${DATABASE_USER:carecircle}
+    password: ${DATABASE_PASSWORD:carecircle}
+  flyway:
+    enabled: true
+server:
+  error:
+    include-message: never

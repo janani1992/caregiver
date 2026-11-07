@@ -62,9 +62,18 @@ class InviteService(
         return InvitePreviewResponse(invite.circleId, invite.circleName, invite.role, invite.expiresAt)
     }
 
-    fun accept(token: String, actorId: UUID, idempotencyKey: String): InviteAcceptanceResponse {
+    fun accept(
+        token: String,
+        actorId: UUID,
+        idempotencyKey: String,
+        request: AcceptInviteRequest,
+    ): InviteAcceptanceResponse {
         validateIdempotencyKey(idempotencyKey)
         validateToken(token)
+        val displayName = request.displayName.trim()
+        if (displayName.isEmpty() || displayName.length > 80) {
+            throw InviteInvalidRequestException("Your name is required")
+        }
         val tokenHash = sha256(token)
 
         try {
@@ -86,23 +95,35 @@ class InviteService(
                 }
                 ensureUsable(invite)
 
-                val existingMembership = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM membership WHERE circle_id = ? AND user_id = ?",
-                    Int::class.java,
+                val existingMembership = jdbc.query(
+                    "SELECT removed_at FROM membership WHERE circle_id = ? AND user_id = ? FOR UPDATE",
+                    RowMapper { rs, _ -> ExistingMembership(rs.getTimestamp("removed_at")?.toInstant()) },
                     invite.circleId,
                     actorId,
-                ) ?: 0
-                if (existingMembership > 0) {
+                ).firstOrNull()
+                if (existingMembership != null && existingMembership.removedAt == null) {
                     throw InviteConflictException("You are already a member of this circle")
                 }
 
                 val acceptedInstant = Instant.now()
-                jdbc.update(
-                    "INSERT INTO membership (circle_id, user_id, role) VALUES (?, ?, ?)",
-                    invite.circleId,
-                    actorId,
-                    invite.role.name,
-                )
+                upsertProfile(actorId, displayName)
+                if (existingMembership == null) {
+                    jdbc.update(
+                        "INSERT INTO membership (circle_id, user_id, role) VALUES (?, ?, ?)",
+                        invite.circleId,
+                        actorId,
+                        invite.role.name,
+                    )
+                } else {
+                    jdbc.update(
+                        "UPDATE membership SET role = ?, joined_at = ?, removed_at = NULL, removed_by = NULL " +
+                            "WHERE circle_id = ? AND user_id = ? AND removed_at IS NOT NULL",
+                        invite.role.name,
+                        Timestamp.from(acceptedInstant),
+                        invite.circleId,
+                        actorId,
+                    )
+                }
                 jdbc.update(
                     "UPDATE circle_invite SET accepted_at = ?, accepted_by = ? WHERE id = ? AND accepted_at IS NULL",
                     Timestamp.from(acceptedInstant),
@@ -120,7 +141,7 @@ class InviteService(
 
     private fun requireOwner(circleId: UUID, actorId: UUID) {
         val role = jdbc.query(
-            "SELECT role FROM membership WHERE circle_id = ? AND user_id = ?",
+            "SELECT role FROM membership WHERE circle_id = ? AND user_id = ? AND removed_at IS NULL",
             RowMapper { rs, _ -> rs.getString("role") },
             circleId,
             actorId,
@@ -170,6 +191,17 @@ class InviteService(
 
     private fun inviteUrl(token: String): String = "${frontendBaseUrl.trimEnd('/')}/invites/$token"
 
+    private fun upsertProfile(userId: UUID, displayName: String) {
+        val updated = jdbc.update(
+            "UPDATE user_profile SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+            displayName,
+            userId,
+        )
+        if (updated == 0) {
+            jdbc.update("INSERT INTO user_profile (user_id, display_name) VALUES (?, ?)", userId, displayName)
+        }
+    }
+
     private fun validateIdempotencyKey(key: String) {
         if (key.isBlank() || key.length > 128) {
             throw InviteInvalidRequestException("Idempotency-Key must be 1-128 characters")
@@ -198,6 +230,8 @@ class InviteService(
         val requestHash: String,
         val expiresAt: Instant,
     )
+
+    private data class ExistingMembership(val removedAt: Instant?)
 
     private data class StoredPreview(
         val id: UUID,

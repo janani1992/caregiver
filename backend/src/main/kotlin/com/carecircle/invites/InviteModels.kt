@@ -1,6 +1,8 @@
 package com.carecircle.invites
 
 import jakarta.validation.constraints.Pattern
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Size
 import java.time.Instant
 import java.util.UUID
 
@@ -14,6 +16,10 @@ data class CreateInviteRequest(
     val id: UUID,
     val role: InviteRole,
     @field:Pattern(regexp = "^[A-Za-z0-9_-]{43}$") val token: String,
+)
+
+data class AcceptInviteRequest(
+    @field:NotBlank @field:Size(max = 80) val displayName: String,
 )
 
 data class InviteResponse(

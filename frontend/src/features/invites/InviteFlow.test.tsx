@@ -69,10 +69,11 @@ describe('invite flow', () => {
     renderAcceptPage();
     expect(await screen.findByRole('heading', { name: 'Join The Tan family.' })).toBeInTheDocument();
     expect(screen.getByText(/care helper/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Rina' } });
     fireEvent.click(screen.getByRole('button', { name: /accept invite/i }));
 
     expect(await screen.findByRole('heading', { name: 'Welcome to the circle.' })).toBeInTheDocument();
-    expect(invitesApi.acceptInvite).toHaveBeenCalledWith('secure-token', expect.any(String));
+    expect(invitesApi.acceptInvite).toHaveBeenCalledWith('secure-token', 'Rina', expect.any(String));
   });
 
   it('shows an unavailable state if invite preview fails', async () => {

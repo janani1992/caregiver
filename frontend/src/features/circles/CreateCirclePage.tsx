@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { createCircle } from '../../api/circles';
 
-type Attempt = { name: string; timezone: string; id: string; key: string };
+type Attempt = { displayName: string; name: string; timezone: string; id: string; key: string };
 
 const timezones = [
   { value: 'Asia/Singapore', label: 'Singapore (GMT+8)' },
@@ -14,6 +14,7 @@ const timezones = [
 
 export default function CreateCirclePage() {
   const navigate = useNavigate();
+  const [displayName, setDisplayName] = useState('');
   const [name, setName] = useState('');
   const [timezone, setTimezone] = useState('Asia/Singapore');
   const [error, setError] = useState('');
@@ -22,7 +23,12 @@ export default function CreateCirclePage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const trimmedDisplayName = displayName.trim();
     const trimmedName = name.trim();
+    if (!trimmedDisplayName) {
+      setError('Add your name so your circle can recognize you.');
+      return;
+    }
     if (!trimmedName) {
       setError('Add a name for your circle to continue.');
       return;
@@ -30,8 +36,14 @@ export default function CreateCirclePage() {
 
     setError('');
     setSubmitting(true);
-    if (!attempt.current || attempt.current.name !== trimmedName || attempt.current.timezone !== timezone) {
+    if (
+      !attempt.current ||
+      attempt.current.displayName !== trimmedDisplayName ||
+      attempt.current.name !== trimmedName ||
+      attempt.current.timezone !== timezone
+    ) {
       attempt.current = {
+        displayName: trimmedDisplayName,
         name: trimmedName,
         timezone,
         id: crypto.randomUUID(),
@@ -41,7 +53,7 @@ export default function CreateCirclePage() {
 
     try {
       const circle = await createCircle(
-        { id: attempt.current.id, name: trimmedName, timezone },
+        { id: attempt.current.id, displayName: trimmedDisplayName, name: trimmedName, timezone },
         attempt.current.key,
       );
       navigate(`/circles/${circle.id}`);
@@ -78,6 +90,18 @@ export default function CreateCirclePage() {
           <h2 id="create-title">Create your circle</h2>
           <p className="muted">Start with a name. You can invite your people next.</p>
           <form onSubmit={handleSubmit} noValidate>
+            <label htmlFor="display-name">Your name</label>
+            <input
+              autoComplete="name"
+              id="display-name"
+              maxLength={80}
+              placeholder="e.g. Alex Tan"
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              aria-describedby="display-name-hint"
+            />
+            <span className="field-hint" id="display-name-hint">Shown to other members of your circle.</span>
+
             <label htmlFor="circle-name">What should we call it?</label>
             <input
               autoFocus
@@ -87,8 +111,7 @@ export default function CreateCirclePage() {
               placeholder="e.g. The Tan family"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              aria-describedby={error ? 'form-error' : 'name-hint'}
-              aria-invalid={Boolean(error)}
+              aria-describedby="name-hint"
             />
             <span className="field-hint" id="name-hint">Keep it simple — you can change this later.</span>
 

@@ -1,4 +1,4 @@
-package com.carecircle.invites
+                                            package com.carecircle.invites
 
 import com.carecircle.circles.CircleControllerTest
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -39,8 +39,10 @@ class InviteControllerTest(
     fun seedOwnerCircle() {
         jdbc.update("DELETE FROM circle_invite")
         jdbc.update("DELETE FROM idempotency_record")
+        jdbc.update("DELETE FROM membership_removal")
         jdbc.update("DELETE FROM membership")
         jdbc.update("DELETE FROM circle")
+        jdbc.update("DELETE FROM user_profile")
         jdbc.update(
             "INSERT INTO circle (id, name, timezone, created_by, change_seq) VALUES (?, ?, ?, ?, 0)",
             circleId,
@@ -48,6 +50,7 @@ class InviteControllerTest(
             "Asia/Singapore",
             ownerId,
         )
+        jdbc.update("INSERT INTO user_profile (user_id, display_name) VALUES (?, ?)", ownerId, "Alex Tan")
         jdbc.update("INSERT INTO membership (circle_id, user_id, role) VALUES (?, ?, 'OWNER')", circleId, ownerId)
     }
 
@@ -120,6 +123,8 @@ class InviteControllerTest(
             mockMvc.post("/v1/invites/$token/accept") {
                 header("X-User-Id", memberId.toString())
                 header("Idempotency-Key", "accept-$attempt-${UUID.randomUUID()}")
+                contentType = MediaType.APPLICATION_JSON
+                content = acceptanceBody("Mina Tan")
             }.andExpect {
                 status { isOk() }
                 jsonPath("$.circleId") { value(circleId.toString()) }
@@ -128,13 +133,54 @@ class InviteControllerTest(
             }
         }
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM membership WHERE circle_id = ? AND user_id = ?", Int::class.java, circleId, memberId))
+        assertEquals("Mina Tan", jdbc.queryForObject("SELECT display_name FROM user_profile WHERE user_id = ?", String::class.java, memberId))
         assertEquals(2L, jdbc.queryForObject("SELECT change_seq FROM circle WHERE id = ?", Long::class.java, circleId))
 
         mockMvc.post("/v1/invites/$token/accept") {
             header("X-User-Id", UUID.randomUUID().toString())
             header("Idempotency-Key", "replay-by-other-${UUID.randomUUID()}")
+            contentType = MediaType.APPLICATION_JSON
+            content = acceptanceBody("Other member")
         }.andExpect { status { isConflict() } }
         assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM membership WHERE circle_id = ?", Int::class.java, circleId))
+    }
+
+    @Test
+    fun `new invite reactivates a removed member and preserves removal audit`() {
+        val token = createInvite("HELPER")
+        val memberId = UUID.randomUUID()
+        val removedAt = Instant.now().minusSeconds(120)
+        jdbc.update("INSERT INTO user_profile (user_id, display_name) VALUES (?, ?)", memberId, "Former member")
+        jdbc.update(
+            "INSERT INTO membership (circle_id, user_id, role, removed_at, removed_by) VALUES (?, ?, 'FAMILY', ?, ?)",
+            circleId,
+            memberId,
+            Timestamp.from(removedAt),
+            ownerId,
+        )
+        jdbc.update(
+            "INSERT INTO membership_removal (circle_id, user_id, removed_by, removed_at) VALUES (?, ?, ?, ?)",
+            circleId,
+            memberId,
+            ownerId,
+            Timestamp.from(removedAt),
+        )
+
+        mockMvc.post("/v1/invites/$token/accept") {
+            header("X-User-Id", memberId.toString())
+            header("Idempotency-Key", "rejoin-${UUID.randomUUID()}")
+            contentType = MediaType.APPLICATION_JSON
+            content = acceptanceBody("Rina Tan")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.role") { value("HELPER") }
+            jsonPath("$.alreadyAccepted") { value(false) }
+        }
+
+        assertEquals("HELPER", jdbc.queryForObject("SELECT role FROM membership WHERE circle_id = ? AND user_id = ?", String::class.java, circleId, memberId))
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM membership WHERE circle_id = ? AND user_id = ? AND removed_at IS NOT NULL", Int::class.java, circleId, memberId))
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM membership_removal WHERE circle_id = ? AND user_id = ?", Int::class.java, circleId, memberId))
+        assertEquals("Rina Tan", jdbc.queryForObject("SELECT display_name FROM user_profile WHERE user_id = ?", String::class.java, memberId))
     }
 
     @Test
@@ -144,13 +190,15 @@ class InviteControllerTest(
         val start = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(users.size)
         try {
-            val results = users.map { userId ->
+            val results = users.mapIndexed { index, userId ->
                 executor.submit<Int> {
                     start.await()
                     mockMvc.perform(
                         postRequest("/v1/invites/$token/accept")
                             .header("X-User-Id", userId.toString())
-                            .header("Idempotency-Key", "concurrent-${UUID.randomUUID()}"),
+                            .header("Idempotency-Key", "concurrent-${UUID.randomUUID()}")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(acceptanceBody("Member ${index + 1}")),
                     ).andReturn().response.status
                 }
             }
@@ -178,6 +226,8 @@ class InviteControllerTest(
         mockMvc.post("/v1/invites/$token/accept") {
             header("X-User-Id", UUID.randomUUID().toString())
             header("Idempotency-Key", "expired-${UUID.randomUUID()}")
+            contentType = MediaType.APPLICATION_JSON
+            content = acceptanceBody("Expired member")
         }.andExpect { status { isGone() } }
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM membership WHERE circle_id = ?", Int::class.java, circleId))
     }
@@ -199,6 +249,8 @@ class InviteControllerTest(
 
     private fun inviteBody(id: UUID, role: String, token: String) =
         """{"id":"$id","role":"$role","token":"$token"}"""
+
+    private fun acceptanceBody(displayName: String) = """{"displayName":"$displayName"}"""
 
     private fun secureToken(): String = ByteArray(32).also(SecureRandom()::nextBytes)
         .let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }

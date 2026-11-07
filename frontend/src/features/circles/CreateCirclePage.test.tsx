@@ -23,6 +23,9 @@ describe('CreateCirclePage', () => {
   it('requires a circle name', async () => {
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: /create circle/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Add your name');
+    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Alex Tan' } });
+    fireEvent.click(screen.getByRole('button', { name: /create circle/i }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Add a name for your circle');
     expect(circlesApi.createCircle).not.toHaveBeenCalled();
   });
@@ -37,12 +40,13 @@ describe('CreateCirclePage', () => {
       changeSeq: 0,
     });
     renderPage();
+    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Alex Tan' } });
     fireEvent.change(screen.getByLabelText('What should we call it?'), { target: { value: 'The Tan family' } });
     fireEvent.click(screen.getByRole('button', { name: /create circle/i }));
 
     expect(await screen.findByText('Circle created')).toBeInTheDocument();
     expect(circlesApi.createCircle).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'The Tan family', timezone: 'Asia/Singapore' }),
+      expect.objectContaining({ displayName: 'Alex Tan', name: 'The Tan family', timezone: 'Asia/Singapore' }),
       expect.any(String),
     );
   });
@@ -59,6 +63,7 @@ describe('CreateCirclePage', () => {
         changeSeq: 0,
       });
     renderPage();
+      fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Alex Tan' } });
     fireEvent.change(screen.getByLabelText('What should we call it?'), { target: { value: 'Family' } });
     fireEvent.click(screen.getByRole('button', { name: /create circle/i }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Service unavailable');

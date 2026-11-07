@@ -18,15 +18,16 @@ class CircleService(
     private val transactions = TransactionTemplate(transactionManager)
 
     fun create(request: CreateCircleRequest, ownerId: UUID, idempotencyKey: String): CircleResponse {
+        val displayName = request.displayName.trim()
         val name = request.name.trim()
         val timezone = request.timezone.trim()
-        if (name.isEmpty() || name.length > 80 || timezone.isEmpty() || timezone.length > 64) {
-            throw InvalidCircleRequestException("Name and timezone are required")
+        if (displayName.isEmpty() || displayName.length > 80 || name.isEmpty() || name.length > 80 || timezone.isEmpty() || timezone.length > 64) {
+            throw InvalidCircleRequestException("Your name, circle name, and timezone are required")
         }
         runCatching { java.time.ZoneId.of(timezone) }
             .getOrElse { throw InvalidCircleRequestException("Unknown timezone") }
 
-        val fingerprint = fingerprint(name, timezone, request.id)
+        val fingerprint = fingerprint(displayName, name, timezone, request.id)
         try {
             return transactions.execute {
                 val existing = findByIdempotencyKey(ownerId, idempotencyKey)
@@ -36,6 +37,7 @@ class CircleService(
                     "INSERT INTO circle (id, name, timezone, created_by, change_seq) VALUES (?, ?, ?, ?, 1)",
                     request.id, name, timezone, ownerId,
                 )
+                upsertProfile(ownerId, displayName)
                 jdbc.update(
                     "INSERT INTO membership (circle_id, user_id, role) VALUES (?, ?, 'OWNER')",
                     request.id, ownerId,
@@ -78,8 +80,19 @@ class CircleService(
         return replay.response
     }
 
-    private fun fingerprint(name: String, timezone: String, id: UUID): String {
-        val value = "$id\n$name\n$timezone".toByteArray(StandardCharsets.UTF_8)
+    private fun upsertProfile(userId: UUID, displayName: String) {
+        val updated = jdbc.update(
+            "UPDATE user_profile SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+            displayName,
+            userId,
+        )
+        if (updated == 0) {
+            jdbc.update("INSERT INTO user_profile (user_id, display_name) VALUES (?, ?)", userId, displayName)
+        }
+    }
+
+    private fun fingerprint(displayName: String, name: String, timezone: String, id: UUID): String {
+        val value = "$id\n$displayName\n$name\n$timezone".toByteArray(StandardCharsets.UTF_8)
         return MessageDigest.getInstance("SHA-256").digest(value).joinToString("") { "%02x".format(it) }
     }
 

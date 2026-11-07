@@ -1,3 +1,5 @@
+import { currentUserId } from './session';
+
 export type InviteRole = 'FAMILY' | 'HELPER' | 'VIEWER';
 
 export type CircleInvite = {
@@ -23,9 +25,6 @@ export type InviteAcceptance = {
   alreadyAccepted: boolean;
 };
 
-const DEVELOPMENT_USER_ID =
-  import.meta.env.VITE_DEV_USER_ID ?? '087a4d5a-9a7b-4ab1-b64f-7c7b00b3e104';
-
 async function responseError(response: Response): Promise<Error> {
   const result: unknown = await response.json().catch(() => undefined);
   const message =
@@ -47,7 +46,7 @@ export async function createInvite(
     headers: {
       'Content-Type': 'application/json',
       'Idempotency-Key': idempotencyKey,
-      'X-User-Id': DEVELOPMENT_USER_ID,
+      'X-User-Id': currentUserId,
     },
     body: JSON.stringify({ id, role, token }),
   });
@@ -61,13 +60,19 @@ export async function getInvitePreview(token: string): Promise<InvitePreview> {
   return response.json() as Promise<InvitePreview>;
 }
 
-export async function acceptInvite(token: string, idempotencyKey: string): Promise<InviteAcceptance> {
+export async function acceptInvite(
+  token: string,
+  displayName: string,
+  idempotencyKey: string,
+): Promise<InviteAcceptance> {
   const response = await fetch(`/v1/invites/${encodeURIComponent(token)}/accept`, {
     method: 'POST',
     headers: {
+      'Content-Type': 'application/json',
       'Idempotency-Key': idempotencyKey,
-      'X-User-Id': DEVELOPMENT_USER_ID,
+      'X-User-Id': currentUserId,
     },
+    body: JSON.stringify({ displayName }),
   });
   if (!response.ok) throw await responseError(response);
   return response.json() as Promise<InviteAcceptance>;

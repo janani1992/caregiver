@@ -114,7 +114,8 @@ erDiagram
 
     CIRCLE { uuid id string name string timezone int change_seq }
     USER { uuid id string display_name string preferred_language string phone_hash }
-    MEMBERSHIP { uuid circle_id uuid user_id enum role }
+    MEMBERSHIP { uuid circle_id uuid user_id enum role timestamp joined_at timestamp removed_at uuid removed_by }
+    MEMBERSHIP_REMOVAL { bigint id uuid circle_id uuid user_id uuid removed_by timestamp removed_at }
     CIRCLE_INVITE { uuid id uuid circle_id string token_hash enum role uuid created_by timestamp expires_at timestamp accepted_at uuid accepted_by }
     LIST_ITEM { uuid id uuid circle_id string text string original_language int qty string unit string shop_group enum status uuid claimed_by int version uuid product_id }
     ITEM_EVENT { bigint seq uuid item_id uuid actor enum type jsonb payload timestamp at }
@@ -151,8 +152,11 @@ All mutating calls require an `Idempotency-Key` header. All endpoints are scoped
 - `POST /v1/invites/{token}/accept`
 - `GET /v1/invites/{token}` previews the circle and assigned role before acceptance.
 - `GET /v1/circles/{id}/members`
+- `DELETE /v1/circles/{id}/members/{userId}` (owner only; soft-removes a member)
 
 Invite links are created by circle owners for `FAMILY`, `HELPER`, or `VIEWER` roles (never `OWNER`). They expire after seven days and can be accepted once. Store only a cryptographic hash of the bearer token; do not log invite tokens. Acceptance and membership creation happen in one database transaction. Repeating acceptance by the same user is safe; another user cannot reuse an accepted invite.
+
+Member roster data exposes display names, roles, and join dates only. Owners can remove non-owner members but cannot remove themselves or another owner. Removal is soft (`removed_at`, `removed_by`) and is also recorded in an append-only `membership_removal` audit table. Removed memberships are excluded from authorization and the active roster; accepting a new invite reactivates the membership while retaining prior removal audit entries.
 
 ### Shopping list
 - `POST /v1/circles/{id}/items` (`text`, `qty`, `photoId?`, `productId?`)

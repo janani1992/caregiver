@@ -4,7 +4,7 @@ A modular-monolith starter for the Care Circle MVP. The first implemented story 
 
 ## Story 1 contract
 
-`POST /v1/circles` accepts a client-generated UUID, a name, and an IANA timezone. Send an `Idempotency-Key` header and, in local development only, an `X-User-Id` header. The API returns `201` with the created circle and `OWNER` role. Replaying a key with the same request returns the original circle; using that key for a different request returns `409`.
+`POST /v1/circles` accepts a client-generated UUID, the creator's display name, a circle name, and an IANA timezone. Send an `Idempotency-Key` header and, in local development only, an `X-User-Id` header. The API returns `201` with the created circle and `OWNER` role. Replaying a key with the same request returns the original circle; using that key for a different request returns `409`.
 
 The development user header is a temporary authentication adapter, not security. Do not enable the `local` profile in production. Real phone/OTP authentication is a separate story.
 
@@ -27,8 +27,12 @@ The development account is configured in `frontend/.env.example`; copy it to `fr
 
 ## Story boundary and follow-ups
 
-Circle creation currently persists circle, owner membership, and idempotency record in one PostgreSQL transaction. Durable database idempotency was used here to make the create operation atomic; reconcile this with the architecture's Redis TTL approach in an ADR before standardizing idempotency across endpoints. Circle creation starts `change_seq` at one; invite creation and acceptance advance it transactionally. Define the durable generic change-feed record before implementing sync. Real authentication, RLS, and post-create circle functionality remain future work.
+Circle creation currently persists circle, owner membership, profile, and idempotency record in one PostgreSQL transaction. Durable database idempotency was used here to make the create operation atomic; reconcile this with the architecture's Redis TTL approach in an ADR before standardizing idempotency across endpoints. Circle creation starts `change_seq` at one; invite creation, acceptance, and member removal advance it transactionally. Define the durable generic change-feed record before implementing sync. Real authentication and RLS remain future work.
 
 ## Story 2: invite a member
 
 Circle owners can create a shareable invite for a `FAMILY`, `HELPER`, or `VIEWER` role. Links expire after seven days. The browser generates a 256-bit bearer token; the API stores only its SHA-256 hash, and invite responses use `Cache-Control: no-store`. The recipient can preview the circle and role before accepting. Membership creation and invite consumption are atomic, and accepting again as the same user is safe. SMS/email delivery and real authentication remain future stories.
+
+## Story 3: view and manage members
+
+Active members can view a roster containing only display name, role, and join date. Only owners can remove non-owners, with confirmation in the UI; self-removal and removing another owner are rejected. Removal is soft, blocks further circle access, and leaves an audit record. A removed member can rejoin only by accepting a new invite; their membership is reactivated and prior removal history is preserved.

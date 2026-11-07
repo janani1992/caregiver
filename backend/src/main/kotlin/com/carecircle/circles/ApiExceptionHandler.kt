@@ -5,6 +5,10 @@ import com.carecircle.invites.InviteExpiredException
 import com.carecircle.invites.InviteForbiddenException
 import com.carecircle.invites.InviteInvalidRequestException
 import com.carecircle.invites.InviteNotFoundException
+import com.carecircle.members.MemberConflictException
+import com.carecircle.members.MemberForbiddenException
+import com.carecircle.members.MemberInvalidRequestException
+import com.carecircle.members.MemberNotFoundException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -47,6 +51,26 @@ class ApiExceptionHandler {
     fun inviteExpired(exception: InviteExpiredException) = ResponseEntity
         .status(HttpStatus.GONE)
         .body(ApiError(exception.message ?: "Invite expired"))
+
+    @ExceptionHandler(MemberForbiddenException::class)
+    fun memberForbidden(exception: MemberForbiddenException) = ResponseEntity
+        .status(HttpStatus.FORBIDDEN)
+        .body(ApiError(exception.message ?: "Forbidden"))
+
+    @ExceptionHandler(MemberNotFoundException::class)
+    fun memberNotFound(exception: MemberNotFoundException) = ResponseEntity
+        .status(HttpStatus.NOT_FOUND)
+        .body(ApiError(exception.message ?: "Member not found"))
+
+    @ExceptionHandler(MemberConflictException::class)
+    fun memberConflict(exception: MemberConflictException) = ResponseEntity
+        .status(HttpStatus.CONFLICT)
+        .body(ApiError(exception.message ?: "Member conflict"))
+
+    @ExceptionHandler(MemberInvalidRequestException::class)
+    fun memberBadRequest(exception: MemberInvalidRequestException) = ResponseEntity
+        .status(HttpStatus.BAD_REQUEST)
+        .body(ApiError(exception.message ?: "Invalid request"))
 }
 
 data class ApiError(val message: String)

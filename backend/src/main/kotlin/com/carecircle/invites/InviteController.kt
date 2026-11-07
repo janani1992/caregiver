@@ -46,8 +46,9 @@ class InviteController(
     fun accept(
         @PathVariable token: String,
         @RequestHeader("Idempotency-Key") idempotencyKey: String,
+        @Valid @RequestBody request: AcceptInviteRequest,
     ): ResponseEntity<InviteAcceptanceResponse> = ResponseEntity
         .ok()
         .cacheControl(CacheControl.noStore())
-        .body(inviteService.accept(token, currentUserProvider.currentUserId(), idempotencyKey))
+        .body(inviteService.accept(token, currentUserProvider.currentUserId(), idempotencyKey, request))
 }

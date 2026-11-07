@@ -34,8 +34,10 @@ class CircleControllerTest(
     @BeforeEach
     fun clearDatabase() {
         jdbc.update("DELETE FROM idempotency_record")
+        jdbc.update("DELETE FROM membership_removal")
         jdbc.update("DELETE FROM membership")
         jdbc.update("DELETE FROM circle")
+        jdbc.update("DELETE FROM user_profile")
     }
 
     @Test
@@ -44,7 +46,7 @@ class CircleControllerTest(
         mockMvc.post("/v1/circles") {
             header("Idempotency-Key", "create-$circleId")
             contentType = org.springframework.http.MediaType.APPLICATION_JSON
-            content = """{"id":"$circleId","name":"  Care Team  ","timezone":"Asia/Singapore"}"""
+            content = """{"id":"$circleId","displayName":"Alex Tan","name":"  Care Team  ","timezone":"Asia/Singapore"}"""
         }.andExpect {
             status { isCreated() }
             jsonPath("$.id") { value(circleId.toString()) }
@@ -58,6 +60,7 @@ class CircleControllerTest(
             "OWNER",
             jdbc.queryForObject("SELECT role FROM membership WHERE circle_id = ? AND user_id = ?", String::class.java, circleId, ownerId),
         )
+        assertEquals("Alex Tan", jdbc.queryForObject("SELECT display_name FROM user_profile WHERE user_id = ?", String::class.java, ownerId))
     }
 
     @Test
@@ -72,7 +75,7 @@ class CircleControllerTest(
                 mockMvc.post("/v1/circles") {
                     header("Idempotency-Key", "rollback-$circleId")
                     contentType = org.springframework.http.MediaType.APPLICATION_JSON
-                    content = """{"id":"$circleId","name":"Family","timezone":"Asia/Singapore"}"""
+                    content = """{"id":"$circleId","displayName":"Alex Tan","name":"Family","timezone":"Asia/Singapore"}"""
                 }
             }
         } finally {
@@ -87,7 +90,7 @@ class CircleControllerTest(
     fun `replaying idempotency key returns original circle without duplicate rows`() {
         val circleId = UUID.randomUUID()
         val key = "retry-$circleId"
-        val body = """{"id":"$circleId","name":"Family","timezone":"Asia/Singapore"}"""
+        val body = """{"id":"$circleId","displayName":"Alex Tan","name":"Family","timezone":"Asia/Singapore"}"""
         repeat(2) {
             mockMvc.post("/v1/circles") {
                 header("Idempotency-Key", key)
@@ -107,13 +110,13 @@ class CircleControllerTest(
         mockMvc.post("/v1/circles") {
             header("Idempotency-Key", "same-key-$circleId")
             contentType = org.springframework.http.MediaType.APPLICATION_JSON
-            content = """{"id":"$circleId","name":"Family","timezone":"Asia/Singapore"}"""
+            content = """{"id":"$circleId","displayName":"Alex Tan","name":"Family","timezone":"Asia/Singapore"}"""
         }.andExpect { status { isCreated() } }
 
         mockMvc.post("/v1/circles") {
             header("Idempotency-Key", "same-key-$circleId")
             contentType = org.springframework.http.MediaType.APPLICATION_JSON
-            content = """{"id":"${UUID.randomUUID()}","name":"Different","timezone":"Asia/Singapore"}"""
+            content = """{"id":"${UUID.randomUUID()}","displayName":"Alex Tan","name":"Different","timezone":"Asia/Singapore"}"""
         }.andExpect { status { isConflict() } }
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM circle", Int::class.java))
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM idempotency_record WHERE idempotency_key = ?", Int::class.java, "same-key-$circleId"))
@@ -124,7 +127,7 @@ class CircleControllerTest(
         mockMvc.post("/v1/circles") {
             header("Idempotency-Key", "bad-timezone-${UUID.randomUUID()}")
             contentType = org.springframework.http.MediaType.APPLICATION_JSON
-            content = """{"id":"${UUID.randomUUID()}","name":"Family","timezone":"Mars/Olympus"}"""
+            content = """{"id":"${UUID.randomUUID()}","displayName":"Alex Tan","name":"Family","timezone":"Mars/Olympus"}"""
         }.andExpect { status { isBadRequest() } }
     }
 

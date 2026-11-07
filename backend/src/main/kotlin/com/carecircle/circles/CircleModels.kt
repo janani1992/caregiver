@@ -6,6 +6,7 @@ import java.util.UUID
 
 data class CreateCircleRequest(
     val id: UUID,
+    @field:NotBlank @field:Size(max = 80) val displayName: String,
     @field:NotBlank @field:Size(max = 80) val name: String,
     @field:NotBlank @field:Size(max = 64) val timezone: String,
 )

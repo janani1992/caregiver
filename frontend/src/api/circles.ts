@@ -1,3 +1,5 @@
+import { currentUserId } from './session';
+
 export type Circle = {
   id: string;
   name: string;
@@ -9,12 +11,10 @@ export type Circle = {
 
 export type CreateCircleInput = {
   id: string;
+  displayName: string;
   name: string;
   timezone: string;
 };
-
-const DEVELOPMENT_USER_ID =
-  import.meta.env.VITE_DEV_USER_ID ?? '087a4d5a-9a7b-4ab1-b64f-7c7b00b3e104';
 
 export async function createCircle(input: CreateCircleInput, idempotencyKey: string): Promise<Circle> {
   const response = await fetch('/v1/circles', {
@@ -22,7 +22,7 @@ export async function createCircle(input: CreateCircleInput, idempotencyKey: str
     headers: {
       'Content-Type': 'application/json',
       'Idempotency-Key': idempotencyKey,
-      'X-User-Id': DEVELOPMENT_USER_ID,
+      'X-User-Id': currentUserId,
     },
     body: JSON.stringify(input),
   });

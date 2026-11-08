@@ -9,6 +9,10 @@ import com.carecircle.members.MemberConflictException
 import com.carecircle.members.MemberForbiddenException
 import com.carecircle.members.MemberInvalidRequestException
 import com.carecircle.members.MemberNotFoundException
+import com.carecircle.shopping.ListItemConflictException
+import com.carecircle.shopping.ListItemForbiddenException
+import com.carecircle.shopping.ListItemInvalidRequestException
+import com.carecircle.shopping.ListItemNotFoundException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -69,6 +73,26 @@ class ApiExceptionHandler {
 
     @ExceptionHandler(MemberInvalidRequestException::class)
     fun memberBadRequest(exception: MemberInvalidRequestException) = ResponseEntity
+        .status(HttpStatus.BAD_REQUEST)
+        .body(ApiError(exception.message ?: "Invalid request"))
+
+    @ExceptionHandler(ListItemForbiddenException::class)
+    fun listItemForbidden(exception: ListItemForbiddenException) = ResponseEntity
+        .status(HttpStatus.FORBIDDEN)
+        .body(ApiError(exception.message ?: "Forbidden"))
+
+    @ExceptionHandler(ListItemNotFoundException::class)
+    fun listItemNotFound(exception: ListItemNotFoundException) = ResponseEntity
+        .status(HttpStatus.NOT_FOUND)
+        .body(ApiError(exception.message ?: "List item not found"))
+
+    @ExceptionHandler(ListItemConflictException::class)
+    fun listItemConflict(exception: ListItemConflictException) = ResponseEntity
+        .status(HttpStatus.CONFLICT)
+        .body(ApiError(exception.message ?: "List item conflict"))
+
+    @ExceptionHandler(ListItemInvalidRequestException::class)
+    fun listItemBadRequest(exception: ListItemInvalidRequestException) = ResponseEntity
         .status(HttpStatus.BAD_REQUEST)
         .body(ApiError(exception.message ?: "Invalid request"))
 }

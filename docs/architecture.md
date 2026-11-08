@@ -159,11 +159,22 @@ Invite links are created by circle owners for `FAMILY`, `HELPER`, or `VIEWER` ro
 Member roster data exposes display names, roles, and join dates only. Owners can remove non-owner members but cannot remove themselves or another owner. Removal is soft (`removed_at`, `removed_by`) and is also recorded in an append-only `membership_removal` audit table. Removed memberships are excluded from authorization and the active roster; accepting a new invite reactivates the membership while retaining prior removal audit entries.
 
 ### Shopping list
-- `POST /v1/circles/{id}/items` (`text`, `qty`, `photoId?`, `productId?`)
+- `POST /v1/circles/{id}/items` (`id`, `text`, optional `qty`, `unit`, `shopGroup`)
 - `GET /v1/circles/{id}/items?status=&shop=`
-- `PATCH /v1/items/{id}` with `If-Match: <version>`
-- `POST /v1/items/{id}/claim` returns `200`, or `409` if already claimed
-- `POST /v1/items/{id}/status` (`BOUGHT` or `NOT_FOUND`, optional receipt or photo)
+- `POST /v1/items/{id}/claim` moves `NEEDED` to `CLAIMED`; returns `409` if another member claimed it
+- `POST /v1/items/{id}/status` with `If-Match: <version>` moves `CLAIMED` to `BOUGHT`
+- `DELETE /v1/items/{id}` soft-removes an item
+
+Shopping-list permissions are enforced by the API, not only the UI:
+
+| Role | View | Add | Claim / mark bought | Remove |
+|---|---:|---:|---:|---:|
+| `OWNER` | Yes | Yes | Yes | Yes |
+| `FAMILY` | Yes | Yes | Yes | Yes |
+| `HELPER` | Yes | Yes | Yes | No |
+| `VIEWER` | Yes | No | No | No |
+
+Items are soft-removed and each successful mutation appends an item event and increments the circle's `change_seq` in the same transaction. An item starts as `NEEDED`; claiming it records the claimant and increments its version, then marking it bought requires the current version. Client-generated item IDs and actor-scoped idempotency keys make retries safe. A helper cannot remove an item, including one they created.
 
 ### Urgent requests
 - `POST /v1/circles/{id}/urgent` (`text`, `itemId?`)

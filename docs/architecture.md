@@ -120,7 +120,7 @@ erDiagram
     LIST_ITEM { uuid id uuid circle_id string text string original_language int qty string unit string shop_group enum status uuid claimed_by int version uuid product_id }
     ITEM_EVENT { bigint seq uuid item_id uuid actor enum type jsonb payload timestamp at }
     LOG_ENTRY { uuid id uuid circle_id uuid author string body string lang enum category timestamp client_ts timestamp server_ts }
-    URGENT_REQUEST { uuid id uuid circle_id uuid sender string text enum state timestamp created_at timestamp acked_at uuid acked_by }
+    URGENT_REQUEST { uuid id uuid circle_id uuid sender string text enum state timestamp created_at uuid handled_by timestamp handled_at uuid resolved_by timestamp resolved_at int version }
     DELIVERY { uuid id uuid request_id uuid recipient enum state int attempts }
     PRODUCT { uuid id uuid circle_id string name string photo_key string notes int typical_pack_days }
     DEVICE { uuid id uuid user_id string push_token string platform }
@@ -177,9 +177,12 @@ Shopping-list permissions are enforced by the API, not only the UI:
 Items are soft-removed and each successful mutation appends an item event and increments the circle's `change_seq` in the same transaction. An item starts as `NEEDED`; claiming it records the claimant and increments its version, then marking it bought requires the current version. Client-generated item IDs and actor-scoped idempotency keys make retries safe. A helper cannot remove an item, including one they created.
 
 ### Urgent requests
-- `POST /v1/circles/{id}/urgent` (`text`, `itemId?`)
-- `POST /v1/urgent/{id}/ack` (`SEEN` or `ON_IT`)
-- `GET /v1/urgent/{id}` returns delivery status per recipient
+- `POST /v1/circles/{id}/urgent` (`id`, `text`, optional `itemId`); only `OWNER` and `FAMILY` can create
+- `GET /v1/circles/{id}/urgent`; all active members can view
+- `POST /v1/urgent/{id}/ack` (`SEEN` or `ON_IT`); every active member can mark a request seen, while `OWNER`, `FAMILY`, or `HELPER` can take an open request
+- `POST /v1/urgent/{id}/resolve`; the assigned member, requester, `OWNER`, or `FAMILY` can resolve
+
+The lifecycle is `OPEN -> ON_IT -> RESOLVED`. `SEEN` is tracked per member and does not change the request lifecycle. Only one member can take an open request; successful changes are audited and increment the circle's `change_seq` in the same transaction. This story implements the request and acknowledgement workflow only—push delivery, per-recipient delivery tracking, and the outbox dispatcher remain future work.
 
 ### Care log
 - `POST /v1/circles/{id}/log`

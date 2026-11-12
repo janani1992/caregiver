@@ -13,6 +13,10 @@ import com.carecircle.shopping.ListItemConflictException
 import com.carecircle.shopping.ListItemForbiddenException
 import com.carecircle.shopping.ListItemInvalidRequestException
 import com.carecircle.shopping.ListItemNotFoundException
+import com.carecircle.urgent.UrgentRequestConflictException
+import com.carecircle.urgent.UrgentRequestForbiddenException
+import com.carecircle.urgent.UrgentRequestInvalidRequestException
+import com.carecircle.urgent.UrgentRequestNotFoundException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -93,6 +97,26 @@ class ApiExceptionHandler {
 
     @ExceptionHandler(ListItemInvalidRequestException::class)
     fun listItemBadRequest(exception: ListItemInvalidRequestException) = ResponseEntity
+        .status(HttpStatus.BAD_REQUEST)
+        .body(ApiError(exception.message ?: "Invalid request"))
+
+    @ExceptionHandler(UrgentRequestForbiddenException::class)
+    fun urgentRequestForbidden(exception: UrgentRequestForbiddenException) = ResponseEntity
+        .status(HttpStatus.FORBIDDEN)
+        .body(ApiError(exception.message ?: "Forbidden"))
+
+    @ExceptionHandler(UrgentRequestNotFoundException::class)
+    fun urgentRequestNotFound(exception: UrgentRequestNotFoundException) = ResponseEntity
+        .status(HttpStatus.NOT_FOUND)
+        .body(ApiError(exception.message ?: "Urgent request not found"))
+
+    @ExceptionHandler(UrgentRequestConflictException::class)
+    fun urgentRequestConflict(exception: UrgentRequestConflictException) = ResponseEntity
+        .status(HttpStatus.CONFLICT)
+        .body(ApiError(exception.message ?: "Urgent request conflict"))
+
+    @ExceptionHandler(UrgentRequestInvalidRequestException::class)
+    fun urgentRequestBadRequest(exception: UrgentRequestInvalidRequestException) = ResponseEntity
         .status(HttpStatus.BAD_REQUEST)
         .body(ApiError(exception.message ?: "Invalid request"))
 }

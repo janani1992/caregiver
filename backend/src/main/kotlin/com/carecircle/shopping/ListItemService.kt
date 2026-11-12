@@ -202,11 +202,15 @@ class ListItemService(
         userId,
     ).firstOrNull()
 
-    private fun lockItem(itemId: UUID): StoredListItem = jdbc.query(
-        itemSelect("WHERE i.id = ? FOR UPDATE"),
-        itemRowMapper,
-        itemId,
-    ).firstOrNull() ?: throw ListItemNotFoundException()
+    private fun lockItem(itemId: UUID): StoredListItem {
+        val exists = jdbc.query(
+            "SELECT id FROM list_item WHERE id = ? FOR UPDATE",
+            RowMapper { rs, _ -> rs.getString("id") },
+            itemId,
+        ).isNotEmpty()
+        if (!exists) throw ListItemNotFoundException()
+        return loadItem(itemId) ?: throw ListItemNotFoundException()
+    }
 
     private fun loadItem(itemId: UUID): StoredListItem? = jdbc.query(
         itemSelect("WHERE i.id = ?"),

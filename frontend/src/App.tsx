@@ -3,6 +3,7 @@ import CreateCirclePage from './features/circles/CreateCirclePage';
 import AcceptInvitePage from './features/invites/AcceptInvitePage';
 import CircleMembersPanel from './features/members/CircleMembersPanel';
 import ShoppingListPanel from './features/shopping/ShoppingListPanel';
+import UrgentRequestsPanel from './features/urgent/UrgentRequestsPanel';
 
 function CircleHomePage() {
   const { circleId } = useParams();
@@ -12,6 +13,7 @@ function CircleHomePage() {
       <div className="circle-dashboard">
         <CircleMembersPanel circleId={circleId ?? ''} />
         <ShoppingListPanel circleId={circleId ?? ''} />
+        <UrgentRequestsPanel circleId={circleId ?? ''} />
       </div>
       <Link className="text-link create-another-link" to="/circles/new">Create another circle</Link>
     </main>

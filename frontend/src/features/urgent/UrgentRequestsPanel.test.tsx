@@ -3,9 +3,16 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import UrgentRequestsPanel from './UrgentRequestsPanel';
 import * as membersApi from '../../api/members';
 import * as urgentApi from '../../api/urgent';
+import * as pushApi from '../../api/push';
 
 vi.mock('../../api/members', () => ({ getCircleMembers: vi.fn() }));
 vi.mock('../../api/session', () => ({ currentUserId: 'fc700cd8-d169-4104-a655-581bcdde920d' }));
+vi.mock('../../api/push', () => ({
+  disableBrowserNotifications: vi.fn(),
+  enableBrowserNotifications: vi.fn(),
+  getCurrentBrowserPushSubscription: vi.fn(),
+  getPushConfiguration: vi.fn(),
+}));
 vi.mock('../../api/urgent', () => ({
   acknowledgeUrgentRequest: vi.fn(),
   canCreateUrgentRequest: (role: string) => role === 'OWNER' || role === 'FAMILY',
@@ -51,6 +58,8 @@ describe('UrgentRequestsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(urgentApi.getUrgentRequests).mockResolvedValue({ circleId: 'circle-1', requests: [request] });
+    vi.mocked(pushApi.getPushConfiguration).mockResolvedValue({ publicKey: null, deliveryEnabled: false });
+    vi.mocked(pushApi.getCurrentBrowserPushSubscription).mockResolvedValue(null);
   });
 
   it('lets helpers mark requests seen and take them on, without create or resolve controls', async () => {
@@ -100,5 +109,22 @@ describe('UrgentRequestsPanel', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Resolve' }));
     await waitFor(() => expect(urgentApi.resolveUrgentRequest).toHaveBeenCalledWith(request.id));
+  });
+
+  it('only requests browser notification permission after the user opts in', async () => {
+    mockRole('HELPER');
+    vi.mocked(pushApi.getPushConfiguration).mockResolvedValue({ publicKey: 'configured-public-key', deliveryEnabled: true });
+    vi.mocked(pushApi.enableBrowserNotifications).mockResolvedValue({
+      id: 'subscription-1',
+      endpoint: 'https://push.example.test/device',
+      createdAt: '2026-11-09T10:00:00Z',
+    });
+    render(<UrgentRequestsPanel circleId="circle-1" />);
+
+    expect(await screen.findByRole('button', { name: 'Turn on alerts' })).toBeInTheDocument();
+    expect(pushApi.enableBrowserNotifications).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on alerts' }));
+    await waitFor(() => expect(pushApi.enableBrowserNotifications).toHaveBeenCalledWith('configured-public-key'));
+    expect(await screen.findByRole('button', { name: 'Turn off alerts' })).toBeInTheDocument();
   });
 });

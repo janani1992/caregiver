@@ -182,7 +182,17 @@ Items are soft-removed and each successful mutation appends an item event and in
 - `POST /v1/urgent/{id}/ack` (`SEEN` or `ON_IT`); every active member can mark a request seen, while `OWNER`, `FAMILY`, or `HELPER` can take an open request
 - `POST /v1/urgent/{id}/resolve`; the assigned member, requester, `OWNER`, or `FAMILY` can resolve
 
-The lifecycle is `OPEN -> ON_IT -> RESOLVED`. `SEEN` is tracked per member and does not change the request lifecycle. Only one member can take an open request; successful changes are audited and increment the circle's `change_seq` in the same transaction. This story implements the request and acknowledgement workflow only—push delivery, per-recipient delivery tracking, and the outbox dispatcher remain future work.
+The lifecycle is `OPEN -> ON_IT -> RESOLVED`. `SEEN` is tracked per member and does not change the request lifecycle. Only one member can take an open request; successful changes are audited and increment the circle's `change_seq` in the same transaction.
+
+### Push notifications (initial delivery slice)
+- `GET /v1/push/configuration` returns the configured VAPID public key, or `null` when browser push is not configured.
+- `POST /v1/push/subscriptions/me`, `GET /v1/push/subscriptions/me`, and `DELETE /v1/push/subscriptions/me/{subscriptionId}` manage only the current member's browser subscriptions.
+- `GET /v1/push/urgent/{requestId}/deliveries` shows delivery state to active members of that request's circle without exposing endpoints or browser keys.
+- Urgent-request creation inserts pending outbox rows for each subscribed active `OWNER`, `FAMILY`, and `HELPER` member, excluding the requester, in the same transaction as the request.
+- The scheduled dispatcher rechecks membership, role, subscription status, and request state immediately before sending. Removed members, disabled subscriptions, and already-closed requests are cancelled. Retryable errors use exponential backoff; stale subscriptions reported gone are disabled.
+- Browser permission is requested only after the user opts in. The service worker displays generic notification text and opens/highlights the request in the app. Browser endpoints and subscription key material are encrypted at rest using `PUSH_ENCRYPTION_KEY`; a SHA-256 endpoint fingerprint supports uniqueness checks without storing the endpoint in plaintext.
+- Set `PUSH_PROVIDER=webpush` to send encrypted Web Push payloads directly to browser push-service endpoints and sign requests with VAPID. Configure `PUSH_VAPID_PUBLIC_KEY`, `PUSH_VAPID_PRIVATE_KEY`, and `PUSH_VAPID_SUBJECT`; keep the private key in deployment secrets. The default `log` provider is for local development only and does not deliver browser notifications. Other vendor/channel integrations can be added behind `PushProvider` later.
+- Subscription endpoints are restricted to known browser push-service hostnames (Google FCM, Mozilla Push, and Apple Push) to prevent the server from acting as a general URL fetcher.
 
 ### Care log
 - `POST /v1/circles/{id}/log`

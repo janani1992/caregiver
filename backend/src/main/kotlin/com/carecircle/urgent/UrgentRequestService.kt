@@ -65,6 +65,7 @@ class UrgentRequestService(
                     Timestamp.from(now),
                 )
                 recordEvent(circleId, request.id, actorId, "CREATED", idempotencyKey, requestHash)
+                enqueueNotifications(circleId, request.id, actorId)
                 incrementCircleSequence(circleId)
                 loadResponse(request.id, actorId)
             } ?: error("Urgent request creation returned no result")
@@ -239,6 +240,31 @@ class UrgentRequestService(
 
     private fun incrementCircleSequence(circleId: UUID) {
         jdbc.update("UPDATE circle SET change_seq = change_seq + 1 WHERE id = ?", circleId)
+    }
+
+    private fun enqueueNotifications(circleId: UUID, requestId: UUID, senderId: UUID) {
+        val subscriptions = jdbc.query(
+            "SELECT ps.id AS subscription_id, ps.user_id FROM push_subscription ps " +
+                "JOIN membership m ON m.user_id = ps.user_id " +
+                "WHERE m.circle_id = ? AND m.removed_at IS NULL AND m.role IN ('OWNER', 'FAMILY', 'HELPER') " +
+                "AND ps.disabled_at IS NULL AND ps.user_id <> ?",
+            RowMapper { rs, _ -> UUID.fromString(rs.getString("subscription_id")) to UUID.fromString(rs.getString("user_id")) },
+            circleId,
+            senderId,
+        )
+        subscriptions.forEach { (subscriptionId, recipientId) ->
+            jdbc.update(
+                "INSERT INTO notification_outbox " +
+                    "(id, circle_id, request_id, recipient_id, subscription_id, status, next_attempt_at) " +
+                    "VALUES (?, ?, ?, ?, ?, 'PENDING', ?)",
+                UUID.randomUUID(),
+                circleId,
+                requestId,
+                recipientId,
+                subscriptionId,
+                Timestamp.from(Instant.now()),
+            )
+        }
     }
 
     private fun validateIdempotencyKey(key: String) {

@@ -6,3 +6,8 @@ spring:
     password:
   flyway:
     enabled: true
+care-circle:
+  push:
+    provider: log
+    encryption-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+    dispatch-delay-ms: 3600000

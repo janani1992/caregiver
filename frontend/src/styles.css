@@ -172,6 +172,14 @@ form button span { font-size: 18px; }
 .urgent-heading h2 { margin: 0; color: var(--ink); font-family: Georgia, serif; font-size: 32px; font-weight: 400; letter-spacing: -.5px; }
 .urgent-heading .muted { margin: 8px 0 0; font-size: 12px; }
 .urgent-icon { display: grid; flex: 0 0 auto; place-items: center; width: 42px; height: 42px; border-radius: 14px; background: #f9ebe7; color: #a44f41; font-family: Georgia, serif; font-size: 25px; }
+.push-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 20px; padding: 13px 15px; border: 1px solid #f1e7e3; border-radius: 10px; background: #fdfaf9; }
+.push-settings > div { display: grid; flex: 1; gap: 4px; }
+.push-settings strong { color: #4a514b; font-size: 11px; }
+.push-settings > div > span { color: #89938b; font-size: 10px; }
+.push-settings-button { flex: 0 0 auto; padding: 7px 10px; border: 1px solid #e8d6d1; border-radius: 7px; background: #fff; color: #91483c; font: inherit; font-size: 10px; font-weight: 600; cursor: pointer; }
+.push-settings-button:disabled { cursor: wait; opacity: .6; }
+.push-unavailable { color: #89938b; font-size: 10px; }
+.push-error { flex-basis: 100%; margin: 0; }
 .urgent-form { display: block; margin-top: 21px; padding: 16px; border-radius: 12px; background: #fcf8f6; }
 .urgent-form label { display: block; margin: 0 0 9px; color: #34443b; font-size: 11px; font-weight: 700; }
 .urgent-form-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
@@ -184,6 +192,7 @@ form button span { font-size: 18px; }
 .urgent-section-heading > span, .urgent-resolved summary span { display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 10px; background: #f9ebe7; color: #a44f41; font-size: 9px; font-weight: 700; }
 .urgent-list { display: grid; margin: 0; padding: 0; list-style: none; }
 .urgent-request { display: flex; min-width: 0; align-items: center; gap: 10px; padding: 14px 0; border-top: 1px solid #f1e9e6; }
+.urgent-request-highlight { border-radius: 9px; background: #fff3dc; box-shadow: 0 0 0 8px #fff3dc; transition: background .3s ease, box-shadow .3s ease; }
 .urgent-marker { display: grid; flex: 0 0 auto; place-items: center; width: 30px; height: 30px; border-radius: 10px; background: #f9ebe7; color: #a44f41; font-family: Georgia, serif; font-size: 18px; }
 .urgent-on_it .urgent-marker { background: #edf2f4; color: #55707b; }
 .urgent-resolved .urgent-marker { background: #e8f0e9; color: var(--green); }

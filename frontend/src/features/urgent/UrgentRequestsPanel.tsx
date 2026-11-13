@@ -2,6 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getCircleMembers, type MemberRole } from '../../api/members';
 import { currentUserId } from '../../api/session';
 import {
+  disableBrowserNotifications,
+  enableBrowserNotifications,
+  getCurrentBrowserPushSubscription,
+  getPushConfiguration,
+  type PushSubscriptionRecord,
+} from '../../api/push';
+import {
   acknowledgeUrgentRequest,
   canCreateUrgentRequest,
   canResolveUrgentRequest,
@@ -25,6 +32,11 @@ export default function UrgentRequestsPanel({ circleId }: { circleId: string }) 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [pushPublicKey, setPushPublicKey] = useState<string | null>(null);
+  const [pushDeliveryEnabled, setPushDeliveryEnabled] = useState(false);
+  const [pushSubscription, setPushSubscription] = useState<PushSubscriptionRecord | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState('');
   const [error, setError] = useState('');
 
   const reload = useCallback(async () => {
@@ -33,6 +45,16 @@ export default function UrgentRequestsPanel({ circleId }: { circleId: string }) 
       const [list, roster] = await Promise.all([getUrgentRequests(circleId), getCircleMembers(circleId)]);
       setRequests(list.requests);
       setRole(roster.currentUserRole);
+      try {
+        const [configuration, subscription] = await Promise.all([getPushConfiguration(), getCurrentBrowserPushSubscription()]);
+        setPushPublicKey(configuration.publicKey);
+        setPushDeliveryEnabled(configuration.deliveryEnabled);
+        setPushSubscription(subscription);
+      } catch {
+        setPushPublicKey(null);
+        setPushDeliveryEnabled(false);
+        setPushSubscription(null);
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Urgent requests could not be loaded.');
     } finally {
@@ -41,6 +63,16 @@ export default function UrgentRequestsPanel({ circleId }: { circleId: string }) 
   }, [circleId]);
 
   useEffect(() => { void reload(); }, [reload]);
+
+  useEffect(() => {
+    const requestId = new URLSearchParams(window.location.search).get('urgentRequestId');
+    if (!requestId || !requests.length) return;
+    const target = document.getElementById(`urgent-request-${requestId}`);
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target?.classList.add('urgent-request-highlight');
+    const timeout = window.setTimeout(() => target?.classList.remove('urgent-request-highlight'), 2400);
+    return () => window.clearTimeout(timeout);
+  }, [requests]);
 
   const activeRequests = useMemo(() => requests.filter((request) => request.state !== 'RESOLVED'), [requests]);
   const resolvedRequests = useMemo(() => requests.filter((request) => request.state === 'RESOLVED'), [requests]);
@@ -76,10 +108,28 @@ export default function UrgentRequestsPanel({ circleId }: { circleId: string }) 
     }
   }
 
+  async function toggleBrowserNotifications() {
+    setPushBusy(true);
+    setPushError('');
+    try {
+      if (pushSubscription) {
+        await disableBrowserNotifications(pushSubscription.id);
+        setPushSubscription(null);
+      } else if (pushPublicKey) {
+        const subscription = await enableBrowserNotifications(pushPublicKey);
+        setPushSubscription(subscription);
+      }
+    } catch (reason) {
+      setPushError(reason instanceof Error ? reason.message : 'Browser notifications could not be configured.');
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
   function renderRequest(request: UrgentRequest) {
     const canResolve = role !== null && canResolveUrgentRequest(role, request, currentUserId);
     return (
-      <li className={`urgent-request urgent-${request.state.toLowerCase()}`} key={request.id}>
+      <li id={`urgent-request-${request.id}`} className={`urgent-request urgent-${request.state.toLowerCase()}`} key={request.id}>
         <span className="urgent-marker" aria-hidden="true">!</span>
         <div className="urgent-request-copy">
           <strong>{request.text}</strong>
@@ -116,6 +166,26 @@ export default function UrgentRequestsPanel({ circleId }: { circleId: string }) 
       </div>
 
       {error && <p className="form-error urgent-error" role="alert">{error}</p>}
+      {role && (
+        <div className="push-settings">
+          <div>
+            <strong>Browser alerts</strong>
+            <span>
+              {pushDeliveryEnabled
+                ? pushSubscription ? 'This browser is registered for urgent alerts.' : 'Get an alert when a new request is sent.'
+                : 'Delivery provider is not configured; development deliveries are simulated.'}
+            </span>
+          </div>
+          {pushPublicKey && pushDeliveryEnabled ? (
+            <button type="button" className="push-settings-button" disabled={pushBusy} onClick={() => void toggleBrowserNotifications()}>
+              {pushBusy ? 'Updating…' : pushSubscription ? 'Turn off alerts' : 'Turn on alerts'}
+            </button>
+          ) : (
+            <span className="push-unavailable">Delivery provider not configured</span>
+          )}
+          {pushError && <p className="form-error push-error" role="alert">{pushError}</p>}
+        </div>
+      )}
       {role && canCreateUrgentRequest(role) && (
         <form className="urgent-form" onSubmit={(event) => void submitRequest(event)}>
           <label htmlFor="urgent-request-text">What needs attention?</label>

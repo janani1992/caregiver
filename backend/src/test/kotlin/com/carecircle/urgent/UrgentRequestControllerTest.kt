@@ -1,6 +1,7 @@
 package com.carecircle.urgent
 
 import com.carecircle.circles.CircleControllerTest
+import com.carecircle.push.NotificationOutboxDispatcher
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -8,6 +9,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.TestConstructor
 import org.springframework.test.web.servlet.MockMvc
@@ -26,6 +28,9 @@ class UrgentRequestControllerTest(
     private val mockMvc: MockMvc,
     private val jdbc: JdbcTemplate,
 ) {
+    @Autowired
+    private lateinit var dispatcher: NotificationOutboxDispatcher
+
     private val ownerId = UUID.fromString("087a4d5a-9a7b-4ab1-b64f-7c7b00b3e104")
     private val circleId = UUID.fromString("8d72daaf-c76f-4be6-b56e-c2732604fe74")
     private val familyId = UUID.fromString("f18d2089-f2ca-412e-a129-d034b3841554")
@@ -34,6 +39,8 @@ class UrgentRequestControllerTest(
 
     @BeforeEach
     fun seedMembers() {
+        jdbc.update("DELETE FROM notification_outbox")
+        jdbc.update("DELETE FROM push_subscription")
         jdbc.update("DELETE FROM urgent_request_event")
         jdbc.update("DELETE FROM urgent_request")
         jdbc.update("DELETE FROM list_item_event")
@@ -187,6 +194,67 @@ class UrgentRequestControllerTest(
             contentType = org.springframework.http.MediaType.APPLICATION_JSON
             content = """{"acknowledgement":"SEEN"}"""
         }.andExpect { status { isForbidden() } }
+    }
+
+    @Test
+    fun `request enqueues eligible subscriptions and dispatcher cancels removed recipients`() {
+        val ownerEndpoint = "https://fcm.googleapis.com/owner-${UUID.randomUUID()}"
+        mockMvc.post("/v1/push/subscriptions/me") {
+            header("X-User-Id", ownerId.toString())
+            contentType = org.springframework.http.MediaType.APPLICATION_JSON
+            content = """{"endpoint":"$ownerEndpoint","keys":{"p256dh":"owner-public","auth":"owner-auth"}}"""
+        }.andExpect { status { isCreated() } }
+        val endpoint = "https://fcm.googleapis.com/helper-${UUID.randomUUID()}"
+        mockMvc.post("/v1/push/subscriptions/me") {
+            header("X-User-Id", helperId.toString())
+            contentType = org.springframework.http.MediaType.APPLICATION_JSON
+            content = """{"endpoint":"$endpoint","keys":{"p256dh":"helper-public","auth":"helper-auth"}}"""
+        }.andExpect { status { isCreated() } }
+        val viewerEndpoint = "https://fcm.googleapis.com/viewer-${UUID.randomUUID()}"
+        mockMvc.post("/v1/push/subscriptions/me") {
+            header("X-User-Id", viewerId.toString())
+            contentType = org.springframework.http.MediaType.APPLICATION_JSON
+            content = """{"endpoint":"$viewerEndpoint","keys":{"p256dh":"viewer-public","auth":"viewer-auth"}}"""
+        }.andExpect { status { isCreated() } }
+        val requestId = UUID.randomUUID()
+        createRequest(requestId, ownerId, "Please check the gate")
+
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM notification_outbox WHERE request_id = ?", Int::class.java, requestId))
+        assertEquals(helperId, jdbc.queryForObject("SELECT recipient_id FROM notification_outbox WHERE request_id = ?", UUID::class.java, requestId))
+        jdbc.update("UPDATE membership SET removed_at = CURRENT_TIMESTAMP WHERE circle_id = ? AND user_id = ?", circleId, helperId)
+
+        assertEquals(true, dispatcher.dispatchOne())
+        assertEquals(
+            "CANCELLED",
+            jdbc.queryForObject("SELECT status FROM notification_outbox WHERE request_id = ?", String::class.java, requestId),
+        )
+    }
+
+    @Test
+    fun `development dispatcher marks generic notification simulated and delivery state is visible to circle members`() {
+        val endpoint = "https://fcm.googleapis.com/helper-${UUID.randomUUID()}"
+        mockMvc.post("/v1/push/subscriptions/me") {
+            header("X-User-Id", helperId.toString())
+            contentType = org.springframework.http.MediaType.APPLICATION_JSON
+            content = """{"endpoint":"$endpoint","keys":{"p256dh":"helper-public","auth":"helper-auth"}}"""
+        }.andExpect { status { isCreated() } }
+        val requestId = UUID.randomUUID()
+        createRequest(requestId, ownerId, "Sensitive request text")
+
+        assertEquals(true, dispatcher.dispatchOne())
+        mockMvc.get("/v1/push/urgent/$requestId/deliveries") {
+            header("X-User-Id", familyId.toString())
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.deliveries.length()") { value(1) }
+            jsonPath("$.deliveries[0].status") { value("SIMULATED") }
+            jsonPath("$.deliveries[0].recipientName") { value("Siti") }
+            jsonPath("$.deliveries[0].endpoint") { doesNotExist() }
+        }
+        assertEquals(
+            1,
+            jdbc.queryForObject("SELECT attempts FROM notification_outbox WHERE request_id = ?", Int::class.java, requestId),
+        )
     }
 
     private fun createRequest(

@@ -10,3 +10,12 @@ spring:
 server:
   error:
     include-message: never
+care-circle:
+  push:
+    provider: ${PUSH_PROVIDER:log}
+    vapid-public-key: ${PUSH_VAPID_PUBLIC_KEY:}
+    vapid-private-key: ${PUSH_VAPID_PRIVATE_KEY:}
+    vapid-subject: ${PUSH_VAPID_SUBJECT:}
+    encryption-key: ${PUSH_ENCRYPTION_KEY:}
+    dispatch-delay-ms: ${PUSH_DISPATCH_DELAY_MS:5000}
+    max-attempts: ${PUSH_MAX_ATTEMPTS:5}

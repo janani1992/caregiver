@@ -9,6 +9,10 @@ import com.carecircle.members.MemberConflictException
 import com.carecircle.members.MemberForbiddenException
 import com.carecircle.members.MemberInvalidRequestException
 import com.carecircle.members.MemberNotFoundException
+import com.carecircle.push.PushSubscriptionConflictException
+import com.carecircle.push.PushSubscriptionForbiddenException
+import com.carecircle.push.PushSubscriptionInvalidRequestException
+import com.carecircle.push.PushSubscriptionNotFoundException
 import com.carecircle.shopping.ListItemConflictException
 import com.carecircle.shopping.ListItemForbiddenException
 import com.carecircle.shopping.ListItemInvalidRequestException
@@ -119,6 +123,26 @@ class ApiExceptionHandler {
     fun urgentRequestBadRequest(exception: UrgentRequestInvalidRequestException) = ResponseEntity
         .status(HttpStatus.BAD_REQUEST)
         .body(ApiError(exception.message ?: "Invalid request"))
+
+    @ExceptionHandler(PushSubscriptionForbiddenException::class)
+    fun pushSubscriptionForbidden(exception: PushSubscriptionForbiddenException) = ResponseEntity
+        .status(HttpStatus.FORBIDDEN)
+        .body(ApiError(exception.message ?: "Forbidden"))
+
+    @ExceptionHandler(PushSubscriptionNotFoundException::class)
+    fun pushSubscriptionNotFound(exception: PushSubscriptionNotFoundException) = ResponseEntity
+        .status(HttpStatus.NOT_FOUND)
+        .body(ApiError(exception.message ?: "Push subscription not found"))
+
+    @ExceptionHandler(PushSubscriptionConflictException::class)
+    fun pushSubscriptionConflict(exception: PushSubscriptionConflictException) = ResponseEntity
+        .status(HttpStatus.CONFLICT)
+        .body(ApiError(exception.message ?: "Push subscription conflict"))
+
+    @ExceptionHandler(PushSubscriptionInvalidRequestException::class)
+    fun pushSubscriptionBadRequest(exception: PushSubscriptionInvalidRequestException) = ResponseEntity
+        .status(HttpStatus.BAD_REQUEST)
+        .body(ApiError(exception.message ?: "Invalid push subscription"))
 }
 
 data class ApiError(val message: String)

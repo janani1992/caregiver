@@ -8,6 +8,8 @@ A modular-monolith starter for the Care Circle MVP. The first implemented story 
 
 The development user header is a temporary authentication adapter, not security. Do not enable the `local` profile in production. Real phone/OTP authentication is a separate story.
 
+Care Log entry text is encrypted at rest. The local profile supplies a development-only key; deployments must set a dedicated, stable base64-encoded 32-byte `CARE_LOG_ENCRYPTION_KEY` secret. Do not reuse the development key or change a deployed key without a data re-encryption plan.
+
 ## Run locally
 
 Requirements: JDK 21, Maven 3.9+, Node.js 20.19+ or 22.12+, npm, and Docker Compose.
@@ -28,6 +30,10 @@ The development account is configured in `frontend/.env.example`; copy it to `fr
 ## Story boundary and follow-ups
 
 Circle creation currently persists circle, owner membership, profile, and idempotency record in one PostgreSQL transaction. Durable database idempotency was used here to make the create operation atomic; reconcile this with the architecture's Redis TTL approach in an ADR before standardizing idempotency across endpoints. Circle creation starts `change_seq` at one; invite creation, acceptance, and member removal advance it transactionally. Define the durable generic change-feed record before implementing sync. Real authentication and RLS remain future work.
+
+## Story 7: care log
+
+Active circle members can read the append-only Care Log; owners, family members, and helpers can add a categorized update. Entries are ordered newest-first and paginated with a stable cursor. Entry text is encrypted in the database with AES-256-GCM, and successful writes increment the circle's `change_seq` transactionally. Editing/deleting entries and offline synchronization remain future stories.
 
 ## Story 2: invite a member
 

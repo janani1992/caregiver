@@ -128,6 +128,36 @@ form button span { font-size: 18px; }
 .create-another-link { align-self: center; margin: 16px 0 26px; }
 .circle-dashboard { display: grid; width: min(820px, 100%); gap: 18px; margin: auto; }
 .circle-dashboard .members-page-content { width: 100%; }
+.care-log-card { padding: 32px 38px; border: 1px solid #e8ebe4; border-radius: 18px; background: #fff; box-shadow: 0 20px 56px #26392d0a; }
+.care-log-heading { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; }
+.care-log-heading .eyebrow { margin-bottom: 10px; }
+.care-log-heading h2 { margin: 0; color: var(--ink); font-family: Georgia, serif; font-size: 32px; font-weight: 400; letter-spacing: -.5px; }
+.care-log-heading .muted { margin: 8px 0 0; font-size: 12px; }
+.care-log-icon { display: grid; flex: 0 0 auto; place-items: center; width: 42px; height: 42px; border-radius: 14px; background: #e8f0e9; color: var(--green); font-size: 27px; }
+.care-log-form { display: block; margin-top: 21px; padding: 16px; border-radius: 12px; background: #f7f9f6; }
+.care-log-form label { display: block; margin: 0 0 9px; color: #34443b; font-size: 11px; font-weight: 700; }
+.care-log-form textarea { display: block; width: 100%; min-height: 84px; resize: vertical; padding: 11px; border: 1px solid #dfe5dd; border-radius: 8px; outline: none; background: #fff; color: var(--ink); font: inherit; font-size: 11px; line-height: 1.6; }
+.care-log-form textarea:focus, .care-log-form select:focus { border-color: #6d9a7a; box-shadow: 0 0 0 3px #dceade; }
+.care-log-form-actions { display: flex; justify-content: space-between; gap: 9px; margin-top: 9px; }
+.care-log-form-actions select { min-width: 0; height: 40px; padding: 0 10px; border: 1px solid #dfe5dd; border-radius: 8px; background: #fff; color: #56665c; font-size: 11px; }
+.care-log-form-actions button { width: auto; height: 40px; min-height: 40px; margin: 0; padding: 0 14px; border: 0; border-radius: 8px; background: var(--green); color: #fff; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+.care-log-form-actions button:disabled, .care-log-more-button:disabled { cursor: wait; opacity: .65; }
+.care-log-list { position: relative; display: grid; gap: 0; margin: 22px 0 0; padding: 0; list-style: none; }
+.care-log-list::before { position: absolute; top: 8px; bottom: 10px; left: 5px; width: 1px; background: #e3ebe2; content: ''; }
+.care-log-entry { position: relative; display: flex; gap: 14px; padding: 0 0 20px; }
+.care-log-timeline-dot { z-index: 1; flex: 0 0 auto; width: 11px; height: 11px; margin-top: 3px; border: 2px solid #fff; border-radius: 50%; background: #6d9a7a; box-shadow: 0 0 0 1px #b8cfbb; }
+.care-log-entry-copy { min-width: 0; flex: 1; }
+.care-log-entry-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; align-items: baseline; }
+.care-log-entry-meta strong { color: #34443b; font-size: 11px; }
+.care-log-entry-meta time { color: #89938b; font-size: 9px; }
+.care-log-category { display: inline-block; margin-top: 6px; padding: 4px 7px; border-radius: 12px; background: #edf3ed; color: #55725c; font-size: 9px; font-weight: 600; }
+.care-log-entry-copy p { margin: 8px 0 0; color: #55645a; font-size: 11px; line-height: 1.65; overflow-wrap: anywhere; white-space: pre-wrap; }
+.care-log-empty { display: grid; place-items: center; min-height: 105px; margin: 14px 0 0; border: 1px dashed #e2e8df; border-radius: 11px; color: #89938b; font-size: 11px; }
+.care-log-empty span { margin-top: 12px; color: #7e9d83; font-size: 19px; }
+.care-log-empty p { margin: 8px 12px 15px; }
+.care-log-more-button { display: block; margin: 4px auto 0; padding: 8px 12px; border: 1px solid #dce8dd; border-radius: 7px; background: #f8faf7; color: var(--green-dark); font: inherit; font-size: 10px; font-weight: 600; cursor: pointer; }
+.care-log-error { margin: 14px 0 0; }
+.care-log-card > .member-privacy-note { margin-top: 15px; }
 .shopping-card { padding: 32px 38px; border: 1px solid #e8ebe4; border-radius: 18px; background: #fff; box-shadow: 0 20px 56px #26392d0a; }
 .shopping-heading { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; }
 .shopping-heading .eyebrow { margin-bottom: 10px; }
@@ -235,6 +265,8 @@ form button span { font-size: 18px; }
   .success-card { padding: 38px 24px; }
   .circle-home-stack .success-card { padding: 32px 22px; }
   .invite-panel { padding: 26px 21px; }
+  .care-log-card { padding: 26px 21px; }
+  .care-log-entry-meta { display: grid; }
   .invite-panel h2 { font-size: 27px; }
   .copy-row { flex-direction: column; }
   .copy-button { min-height: 39px; }

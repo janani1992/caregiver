@@ -2,6 +2,7 @@ import { Link, Route, Routes, useParams } from 'react-router-dom';
 import CreateCirclePage from './features/circles/CreateCirclePage';
 import AcceptInvitePage from './features/invites/AcceptInvitePage';
 import CircleMembersPanel from './features/members/CircleMembersPanel';
+import CareLogPanel from './features/carelog/CareLogPanel';
 import ShoppingListPanel from './features/shopping/ShoppingListPanel';
 import UrgentRequestsPanel from './features/urgent/UrgentRequestsPanel';
 
@@ -12,6 +13,7 @@ function CircleHomePage() {
       <header className="brand"><span className="brand-mark">✳</span> care circle</header>
       <div className="circle-dashboard">
         <CircleMembersPanel circleId={circleId ?? ''} />
+        <CareLogPanel circleId={circleId ?? ''} />
         <ShoppingListPanel circleId={circleId ?? ''} />
         <UrgentRequestsPanel circleId={circleId ?? ''} />
       </div>

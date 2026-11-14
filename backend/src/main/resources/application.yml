@@ -11,6 +11,8 @@ server:
   error:
     include-message: never
 care-circle:
+  care-log:
+    encryption-key: ${CARE_LOG_ENCRYPTION_KEY:}
   push:
     provider: ${PUSH_PROVIDER:log}
     vapid-public-key: ${PUSH_VAPID_PUBLIC_KEY:}

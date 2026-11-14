@@ -7,6 +7,8 @@ spring:
   flyway:
     enabled: true
 care-circle:
+  care-log:
+    encryption-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
   push:
     provider: log
     encryption-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=

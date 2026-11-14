@@ -195,8 +195,11 @@ The lifecycle is `OPEN -> ON_IT -> RESOLVED`. `SEEN` is tracked per member and d
 - Subscription endpoints are restricted to known browser push-service hostnames (Google FCM, Mozilla Push, and Apple Push) to prevent the server from acting as a general URL fetcher.
 
 ### Care log
-- `POST /v1/circles/{id}/log`
-- `GET /v1/circles/{id}/log?cursor=&limit=`
+- `POST /v1/circles/{id}/log` accepts a client-generated `id`, `text` (1-2000 characters), and optional category (`GENERAL`, `MEDICATION`, `APPOINTMENT`, `WELLBEING`, or `OTHER`). It requires an `Idempotency-Key`; retries with the same key and payload return the original entry.
+- `GET /v1/circles/{id}/log?cursor=&limit=` returns entries newest-first (server timestamp, then UUID descending), with an opaque keyset cursor and a page size from 1 to 50 (default 20).
+- All active members, including `VIEWER`, can read. `OWNER`, `FAMILY`, and `HELPER` can add entries; there are no edit or delete operations.
+- Entry text is encrypted with AES-256-GCM before it is stored. Configure a dedicated base64-encoded 32-byte `CARE_LOG_ENCRYPTION_KEY` and keep it stable for as long as entries encrypted by it must remain readable. The local profile and test profile use non-production keys; the default profile has no key and returns `503` for care-log operations until configured.
+- A successful creation and its per-circle `change_seq` increment commit in the same transaction. The encrypted entry itself is append-only; it is not duplicated into a separate event table.
 - `GET /v1/circles/{id}/summary?week=` (generated asynchronously)
 
 ### Sync and realtime

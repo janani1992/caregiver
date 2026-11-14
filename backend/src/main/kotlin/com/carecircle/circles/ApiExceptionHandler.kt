@@ -1,5 +1,9 @@
 package com.carecircle.circles
 
+import com.carecircle.carelog.CareLogConflictException
+import com.carecircle.carelog.CareLogEncryptionUnavailableException
+import com.carecircle.carelog.CareLogForbiddenException
+import com.carecircle.carelog.CareLogInvalidRequestException
 import com.carecircle.invites.InviteConflictException
 import com.carecircle.invites.InviteExpiredException
 import com.carecircle.invites.InviteForbiddenException
@@ -29,6 +33,26 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
 
 @RestControllerAdvice
 class ApiExceptionHandler {
+    @ExceptionHandler(CareLogInvalidRequestException::class)
+    fun careLogBadRequest(exception: CareLogInvalidRequestException) = ResponseEntity
+        .status(HttpStatus.BAD_REQUEST)
+        .body(ApiError(exception.message ?: "Invalid care log request"))
+
+    @ExceptionHandler(CareLogForbiddenException::class)
+    fun careLogForbidden(exception: CareLogForbiddenException) = ResponseEntity
+        .status(HttpStatus.FORBIDDEN)
+        .body(ApiError(exception.message ?: "Forbidden"))
+
+    @ExceptionHandler(CareLogConflictException::class)
+    fun careLogConflict(exception: CareLogConflictException) = ResponseEntity
+        .status(HttpStatus.CONFLICT)
+        .body(ApiError(exception.message ?: "Care log conflict"))
+
+    @ExceptionHandler(CareLogEncryptionUnavailableException::class)
+    fun careLogEncryptionUnavailable(exception: CareLogEncryptionUnavailableException) = ResponseEntity
+        .status(HttpStatus.SERVICE_UNAVAILABLE)
+        .body(ApiError(exception.message ?: "Care log is temporarily unavailable"))
+
     @ExceptionHandler(InvalidCircleRequestException::class, MethodArgumentNotValidException::class)
     fun badRequest(exception: Exception) = ResponseEntity
         .status(HttpStatus.BAD_REQUEST)

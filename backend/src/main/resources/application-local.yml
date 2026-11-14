@@ -1,1 +1,5 @@
 # Development only. This profile trusts X-User-Id and must never be enabled in production.
+care-circle:
+	care-log:
+		# Local-only demo key. Configure CARE_LOG_ENCRYPTION_KEY with a unique secret outside development.
+		encryption-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=

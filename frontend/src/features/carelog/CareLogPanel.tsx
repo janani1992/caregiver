@@ -116,6 +116,8 @@ export default function CareLogPanel({ circleId }: { circleId: string }) {
 
       {loading ? (
         <p className="care-log-empty" role="status">Loading care updates…</p>
+      ) : error && entries.length === 0 ? (
+        <div className="care-log-empty" role="status"><span aria-hidden="true">⌁</span><p>Connect to load Care Log updates. They aren’t stored for offline use.</p></div>
       ) : entries.length === 0 ? (
         <div className="care-log-empty"><span aria-hidden="true">✳</span><p>No updates yet. You can add the first one.</p></div>
       ) : (

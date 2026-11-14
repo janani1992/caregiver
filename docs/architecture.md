@@ -282,6 +282,8 @@ Example: the helper is offline and marks "paracetamol" as `BOUGHT`. Meanwhile th
 
 Implementation: hide the logic behind a `SyncService` interface. If a shared free-text note is added later, only that field gets a CRDT.
 
+Initial offline slice: the service worker caches only the app shell and same-origin build assets; `/v1` requests always go to the network and are never cached. The browser stores a per-user/per-circle shopping-list snapshot and a durable queue for new-item additions in IndexedDB. A queued add retains its client UUID and idempotency key and is replayed through the normal API when connectivity returns. Server-side role checks still apply; rejected operations remain visible until retried or discarded. Claim, mark-bought, remove, Care Log, urgent-request, and member operations remain online-only. When the server confirms access has been removed, the local snapshot is deleted and pending adds are marked for review. Browser storage is device-local and not application-encrypted; users should not enable this on shared devices. This slice does not yet implement a generic change feed, background sync, or cross-device reconciliation.
+
 Named conflict test scenarios (each with an automated test):
 1. Offline delete vs. mark-bought.
 2. Two offline edits to the same quantity.

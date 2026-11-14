@@ -205,6 +205,8 @@ export default function UrgentRequestsPanel({ circleId }: { circleId: string }) 
 
       {loading ? (
         <p className="urgent-empty" role="status">Loading urgent requests…</p>
+      ) : error && requests.length === 0 ? (
+        <p className="urgent-no-active" role="status">Connect to load urgent requests. They aren’t stored for offline use.</p>
       ) : requests.length === 0 ? (
         <div className="urgent-empty"><span aria-hidden="true">✓</span><p>No urgent requests. Everyone is in the loop.</p></div>
       ) : (

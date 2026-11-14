@@ -73,4 +73,13 @@ describe('CareLogPanel', () => {
     expect(await screen.findByText('Older update')).toBeInTheDocument();
     expect(careLogApi.getCareLogEntries).toHaveBeenLastCalledWith('circle-1', 'cursor-1');
   });
+
+  it('does not present a failed offline load as an empty Care Log', async () => {
+    mockRole('FAMILY');
+    vi.mocked(careLogApi.getCareLogEntries).mockRejectedValue(new Error('Network unavailable'));
+    render(<CareLogPanel circleId="circle-1" />);
+
+    expect(await screen.findByText(/They aren’t stored for offline use/)).toBeInTheDocument();
+    expect(screen.queryByText(/No updates yet/)).not.toBeInTheDocument();
+  });
 });

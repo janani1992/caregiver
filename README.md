@@ -33,7 +33,11 @@ Circle creation currently persists circle, owner membership, profile, and idempo
 
 ## Story 7: care log
 
-Active circle members can read the append-only Care Log; owners, family members, and helpers can add a categorized update. Entries are ordered newest-first and paginated with a stable cursor. Entry text is encrypted in the database with AES-256-GCM, and successful writes increment the circle's `change_seq` transactionally. Editing/deleting entries and offline synchronization remain future stories.
+Active circle members can read the append-only Care Log; owners, family members, and helpers can add a categorized update. Entries are ordered newest-first and paginated with a stable cursor. Entry text is encrypted in the database with AES-256-GCM, and successful writes increment the circle's `change_seq` transactionally. Editing/deleting entries and broader offline synchronization remain future stories.
+
+## Story 8: initial offline support
+
+The service worker caches the app shell and build assets, but never caches `/v1` responses. The shopping list stores a device-local snapshot and queues new-item additions with stable item IDs and idempotency keys; queued adds sync through the normal API after reconnecting. Claims, status changes, removals, Care Log, urgent requests, and members still require a network connection. IndexedDB data is not application-encrypted, so avoid this feature on shared devices. A generic change feed and broader offline conflict handling remain future work.
 
 ## Story 2: invite a member
 

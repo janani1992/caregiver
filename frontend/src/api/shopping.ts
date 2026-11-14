@@ -23,13 +23,20 @@ export type ListItem = {
 export type CircleItems = { circleId: string; items: ListItem[] };
 export type ShoppingItemInput = { id: string; text: string; qty?: number; shopGroup?: string };
 
-async function getError(response: Response): Promise<Error> {
+export class ShoppingApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'ShoppingApiError';
+  }
+}
+
+async function getError(response: Response): Promise<ShoppingApiError> {
   const result: unknown = await response.json().catch(() => undefined);
   const message =
     typeof result === 'object' && result !== null && 'message' in result && typeof result.message === 'string'
       ? result.message
       : 'The shopping list could not be updated. Please try again.';
-  return new Error(message);
+  return new ShoppingApiError(message, response.status);
 }
 
 function headers(idempotencyKey?: string): HeadersInit {
@@ -45,14 +52,27 @@ export async function getShoppingItems(circleId: string): Promise<CircleItems> {
   return response.json() as Promise<CircleItems>;
 }
 
-export async function addShoppingItem(circleId: string, input: ShoppingItemInput): Promise<ListItem> {
+export async function addShoppingItem(
+  circleId: string,
+  input: ShoppingItemInput,
+  idempotencyKey: string = crypto.randomUUID(),
+): Promise<ListItem> {
   const response = await fetch(`/v1/circles/${circleId}/items`, {
     method: 'POST',
-    headers: { ...headers(crypto.randomUUID()), 'Content-Type': 'application/json' },
+    headers: { ...headers(idempotencyKey), 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
   if (!response.ok) throw await getError(response);
   return response.json() as Promise<ListItem>;
+}
+
+export function isRetryableShoppingError(error: unknown): boolean {
+  if (error instanceof ShoppingApiError) return error.status === 408 || error.status === 429 || error.status >= 500;
+  return !(error instanceof Error) || error.name === 'TypeError' || error.name === 'AbortError';
+}
+
+export function isShoppingAccessRevoked(error: unknown): boolean {
+  return error instanceof ShoppingApiError && [401, 403, 404].includes(error.status);
 }
 
 export async function claimShoppingItem(itemId: string): Promise<ListItem> {

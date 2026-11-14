@@ -111,6 +111,15 @@ describe('UrgentRequestsPanel', () => {
     await waitFor(() => expect(urgentApi.resolveUrgentRequest).toHaveBeenCalledWith(request.id));
   });
 
+  it('does not present a failed offline load as no urgent requests', async () => {
+    mockRole('FAMILY');
+    vi.mocked(urgentApi.getUrgentRequests).mockRejectedValue(new Error('Network unavailable'));
+    render(<UrgentRequestsPanel circleId="circle-1" />);
+
+    expect(await screen.findByText(/They aren’t stored for offline use/)).toBeInTheDocument();
+    expect(screen.queryByText(/No urgent requests/)).not.toBeInTheDocument();
+  });
+
   it('only requests browser notification permission after the user opts in', async () => {
     mockRole('HELPER');
     vi.mocked(pushApi.getPushConfiguration).mockResolvedValue({ publicKey: 'configured-public-key', deliveryEnabled: true });

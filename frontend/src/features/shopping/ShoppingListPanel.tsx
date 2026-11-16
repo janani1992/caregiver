@@ -16,13 +16,19 @@ import {
 } from '../../api/shopping';
 import {
   getQueuedShoppingAdds,
+  getQueuedShoppingActions,
+  getQueuedShoppingOperations,
   getShoppingSnapshot,
   markQueuedShoppingAddFailed,
+  markQueuedShoppingOperationFailed,
   queueShoppingAdd,
+  queueShoppingAction,
   removeQueuedShoppingAdd,
+  removeQueuedShoppingActionsForItem,
   removeShoppingSnapshot,
   retryQueuedShoppingAdd,
   saveShoppingSnapshot,
+  type QueuedShoppingAction,
   type QueuedShoppingAdd,
 } from '../../offline/shoppingStore';
 
@@ -47,6 +53,7 @@ export default function ShoppingListPanel({ circleId }: { circleId: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [queuedAdds, setQueuedAdds] = useState<QueuedShoppingAdd[]>([]);
+  const [queuedActions, setQueuedActions] = useState<QueuedShoppingAction[]>([]);
   const [hasSavedSnapshot, setHasSavedSnapshot] = useState(false);
   const [snapshotSavedAt, setSnapshotSavedAt] = useState<string | null>(null);
   const [networkUnavailable, setNetworkUnavailable] = useState(false);
@@ -54,7 +61,12 @@ export default function ShoppingListPanel({ circleId }: { circleId: string }) {
   const hasSavedSnapshotRef = useRef(false);
 
   const refreshQueue = useCallback(async () => {
-    setQueuedAdds(await getQueuedShoppingAdds(currentUserId, circleId));
+    const [adds, actions] = await Promise.all([
+      getQueuedShoppingAdds(currentUserId, circleId),
+      getQueuedShoppingActions(currentUserId, circleId),
+    ]);
+    setQueuedAdds(adds);
+    setQueuedActions(actions);
   }, [circleId]);
 
   const reload = useCallback(async () => {
@@ -106,7 +118,9 @@ export default function ShoppingListPanel({ circleId }: { circleId: string }) {
       } else if (isShoppingAccessRevoked(reason)) {
         await removeShoppingSnapshot(currentUserId, circleId).catch(() => undefined);
         const queued = await getQueuedShoppingAdds(currentUserId, circleId).catch(() => []);
+        const queuedActions = await getQueuedShoppingActions(currentUserId, circleId).catch(() => []);
         await Promise.all(queued.map((entry) => markQueuedShoppingAddFailed(entry.queueId, 'Circle access changed. Discard or contact a circle owner.')));
+        await Promise.all(queuedActions.map((entry) => markQueuedShoppingOperationFailed(entry.queueId, 'Circle access changed. Discard or contact a circle owner.')));
         await refreshQueue().catch(() => undefined);
         setItems([]);
         setRole(null);
@@ -125,15 +139,29 @@ export default function ShoppingListPanel({ circleId }: { circleId: string }) {
     }
   }, [circleId, refreshQueue]);
 
-  const syncQueuedAdds = useCallback(async () => {
+  const syncQueuedOperations = useCallback(async () => {
     if (!navigator.onLine) return;
-    const queued = await getQueuedShoppingAdds(currentUserId, circleId).catch(() => []);
+    const queued = await getQueuedShoppingOperations(currentUserId, circleId).catch(() => []);
     let syncedAny = false;
-    for (const queuedAdd of queued) {
-      if (queuedAdd.failureMessage) continue;
+    let accessRejected = false;
+    const blockedItemIds = new Set<string>();
+    for (const operation of queued) {
+      const affectedItemId = operation.operation === 'ADD' ? operation.input.id : operation.itemId;
+      if (operation.failureMessage) {
+        blockedItemIds.add(affectedItemId);
+        continue;
+      }
+      if (blockedItemIds.has(affectedItemId)) continue;
       try {
-        await addShoppingItem(circleId, queuedAdd.input, queuedAdd.idempotencyKey);
-        await removeQueuedShoppingAdd(queuedAdd.queueId);
+        if (operation.operation === 'ADD') {
+          await addShoppingItem(circleId, operation.input, operation.idempotencyKey);
+        } else if (operation.operation === 'CLAIM') {
+          await claimShoppingItem(operation.itemId, operation.idempotencyKey);
+        } else {
+          const item = { ...operation.itemSnapshot, version: operation.expectedVersion ?? operation.itemSnapshot.version };
+          await markShoppingItemBought(item, operation.idempotencyKey);
+        }
+        await removeQueuedShoppingAdd(operation.queueId);
         syncedAny = true;
       } catch (reason) {
         if (isRetryableShoppingError(reason)) {
@@ -141,11 +169,13 @@ export default function ShoppingListPanel({ circleId }: { circleId: string }) {
           break;
         }
         const message = reason instanceof Error ? reason.message : 'This item could not be synced.';
-        await markQueuedShoppingAddFailed(queuedAdd.queueId, message);
+        await markQueuedShoppingOperationFailed(operation.queueId, message);
+        blockedItemIds.add(affectedItemId);
+        if (isShoppingAccessRevoked(reason)) accessRejected = true;
       }
     }
     await refreshQueue().catch(() => undefined);
-    if (syncedAny) await reload();
+    if (syncedAny || accessRejected) await reload();
   }, [circleId, refreshQueue, reload]);
 
   useEffect(() => {
@@ -153,18 +183,18 @@ export default function ShoppingListPanel({ circleId }: { circleId: string }) {
       setNetworkUnavailable(true);
       setDataUnavailableOffline(!hasSavedSnapshotRef.current);
     };
-    const handleOnline = () => { void (async () => { await syncQueuedAdds(); await reload(); })(); };
-    const handleFocus = () => { void syncQueuedAdds(); };
+    const handleOnline = () => { void (async () => { await syncQueuedOperations(); await reload(); })(); };
+    const handleFocus = () => { void syncQueuedOperations(); };
     window.addEventListener('offline', handleOffline);
     window.addEventListener('online', handleOnline);
     window.addEventListener('focus', handleFocus);
-    void (async () => { await reload(); await syncQueuedAdds(); })();
+    void (async () => { await reload(); await syncQueuedOperations(); })();
     return () => {
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [reload, syncQueuedAdds]);
+  }, [reload, syncQueuedOperations]);
 
   function toPendingItem(queuedAdd: QueuedShoppingAdd): ListItem {
     const timestamp = queuedAdd.queuedAt;
@@ -187,25 +217,72 @@ export default function ShoppingListPanel({ circleId }: { circleId: string }) {
   }
 
   const pendingIds = useMemo(() => new Set(queuedAdds.map(({ input }) => input.id)), [queuedAdds]);
+  const pendingActionIds = useMemo(() => new Set(queuedActions.map((action) => action.itemId)), [queuedActions]);
+  const failedOperationByItem = useMemo(() => {
+    const failures = new Map<string, string>();
+    for (const action of queuedActions) {
+      if (action.failureMessage && !failures.has(action.itemId)) failures.set(action.itemId, action.failureMessage);
+    }
+    return failures;
+  }, [queuedActions]);
   const displayedItems = useMemo(() => {
-    const knownIds = new Set(items.map((item) => item.id));
-    return [...queuedAdds.map(toPendingItem).filter((item) => !knownIds.has(item.id)), ...items];
-  }, [circleId, items, queuedAdds]);
+    const itemById = new Map(items.map((item) => [item.id, item]));
+    const blockedItemIds = new Set<string>();
+    for (const action of queuedActions) {
+      if (!itemById.has(action.itemId)) itemById.set(action.itemId, action.itemSnapshot);
+      if (action.failureMessage) {
+        blockedItemIds.add(action.itemId);
+        continue;
+      }
+      if (blockedItemIds.has(action.itemId)) continue;
+
+      const current = itemById.get(action.itemId);
+      if (!current) continue;
+      if (action.operation === 'CLAIM' && current.status === 'NEEDED') {
+        itemById.set(action.itemId, {
+          ...current,
+          status: 'CLAIMED',
+          claimedBy: currentUserId,
+          claimedByName: 'You',
+          version: current.version + 1,
+        });
+      } else if (action.operation === 'BOUGHT' && current.status === 'CLAIMED') {
+        itemById.set(action.itemId, { ...current, status: 'BOUGHT', version: current.version + 1 });
+      }
+    }
+
+    const knownIds = new Set(itemById.keys());
+    return [...queuedAdds.map(toPendingItem).filter((item) => !knownIds.has(item.id)), ...itemById.values()];
+  }, [circleId, items, queuedActions, queuedAdds]);
 
   const visibleItems = useMemo(
     () => filter === 'ALL' ? displayedItems : displayedItems.filter((item) => item.status === filter),
     [displayedItems, filter],
   );
 
-  async function discardQueuedAdd(queuedAdd: QueuedShoppingAdd) {
-    await removeQueuedShoppingAdd(queuedAdd.queueId);
+  async function discardPendingItem(itemId: string) {
+    const queuedAdd = queuedAdds.find((entry) => entry.input.id === itemId);
+    if (queuedAdd) await removeQueuedShoppingAdd(queuedAdd.queueId);
+    await removeQueuedShoppingActionsForItem(currentUserId, circleId, itemId);
     await refreshQueue();
   }
 
   async function retryQueuedAdd(queuedAdd: QueuedShoppingAdd) {
     await retryQueuedShoppingAdd(queuedAdd.queueId);
     await refreshQueue();
-    await syncQueuedAdds();
+    await syncQueuedOperations();
+  }
+
+  async function enqueueAction(item: ListItem, action: 'claim' | 'bought', idempotencyKey: string) {
+    await queueShoppingAction(
+      currentUserId,
+      circleId,
+      action === 'claim' ? 'CLAIM' : 'BOUGHT',
+      item,
+      idempotencyKey,
+    );
+    await refreshQueue();
+    setNetworkUnavailable(true);
   }
 
   async function submitItem(event: React.FormEvent<HTMLFormElement>) {
@@ -253,17 +330,38 @@ export default function ShoppingListPanel({ circleId }: { circleId: string }) {
   async function runItemAction(item: ListItem, action: 'claim' | 'bought' | 'remove') {
     setBusyId(item.id);
     setError('');
+    const idempotencyKey = crypto.randomUUID();
     try {
-      if (action === 'claim') await claimShoppingItem(item.id);
-      if (action === 'bought') await markShoppingItemBought(item);
-      if (action === 'remove') await removeShoppingItem(item.id);
-      await reload();
+      if (action === 'remove') {
+        if (!navigator.onLine || networkUnavailable) {
+          setError('Removing items still requires a connection.');
+          return;
+        }
+        await removeShoppingItem(item.id);
+        await reload();
+        return;
+      }
+
+      if (!navigator.onLine || networkUnavailable) {
+        await enqueueAction(item, action, idempotencyKey);
+        return;
+      }
+
+      try {
+        if (action === 'claim') await claimShoppingItem(item.id, idempotencyKey);
+        else await markShoppingItemBought(item, idempotencyKey);
+        await reload();
+      } catch (reason) {
+        if (!isRetryableShoppingError(reason)) throw reason;
+        await enqueueAction(item, action, idempotencyKey);
+      }
     } catch (reason) {
       if (isRetryableShoppingError(reason)) {
         setNetworkUnavailable(true);
         setError(reason instanceof Error ? reason.message : 'The item could not be updated.');
       } else {
         await reload();
+        setError(reason instanceof Error ? reason.message : 'The item could not be updated.');
       }
     } finally {
       setBusyId(null);
@@ -351,61 +449,56 @@ export default function ShoppingListPanel({ circleId }: { circleId: string }) {
         </div>
       ) : (
         <ul className="shopping-items">
-          {visibleItems.map((item) => (
-            <li className="shopping-item" key={item.id}>
-              <span className={`item-status-dot status-${item.status.toLowerCase()}`} aria-hidden="true" />
-              <div className="shopping-item-details">
-                <strong>{item.text}{item.qty != null && <span className="item-quantity"> · {item.qty}{item.unit ? ` ${item.unit}` : ''}</span>}</strong>
-                <span>
-                  {item.shopGroup ? `${item.shopGroup} · ` : ''}
-                  {item.status === 'CLAIMED' && item.claimedByName ? `Picked up by ${item.claimedByName}` : `Added by ${item.createdByName}`}
-                </span>
-                {queuedAdds.find(({ input }) => input.id === item.id)?.failureMessage && (
-                  <span className="queued-item-error" role="status">
-                    {queuedAdds.find(({ input }) => input.id === item.id)?.failureMessage}
+          {visibleItems.map((item) => {
+            const queuedAdd = queuedAdds.find(({ input }) => input.id === item.id);
+            const failedMessage = queuedAdd?.failureMessage ?? failedOperationByItem.get(item.id);
+            const hasPendingMutation = pendingIds.has(item.id) || pendingActionIds.has(item.id);
+            const hasConflict = Boolean(failedMessage);
+            const canQueueStatus = role !== null && canWriteShoppingList(role) && !hasConflict;
+            return (
+              <li className="shopping-item" key={item.id}>
+                <span className={`item-status-dot status-${item.status.toLowerCase()}`} aria-hidden="true" />
+                <div className="shopping-item-details">
+                  <strong>{item.text}{item.qty != null && <span className="item-quantity"> · {item.qty}{item.unit ? ` ${item.unit}` : ''}</span>}</strong>
+                  <span>
+                    {item.shopGroup ? `${item.shopGroup} · ` : ''}
+                    {item.status === 'CLAIMED' && item.claimedByName ? `Picked up by ${item.claimedByName}` : `Added by ${item.createdByName}`}
                   </span>
-                )}
-              </div>
-              {pendingIds.has(item.id) ? (
-                <span className="item-status-label item-status-pending">
-                    {queuedAdds.find(({ input }) => input.id === item.id)?.failureMessage ? 'Needs attention' : 'Waiting to sync'}
-                </span>
-              ) : <span className={`item-status-label status-label-${item.status.toLowerCase()}`}>{statusLabels[item.status]}</span>}
-              {pendingIds.has(item.id) && (
-                <>
-                  {queuedAdds.find(({ input }) => input.id === item.id)?.failureMessage && (
-                    <button className="item-action-button" type="button" onClick={() => {
-                      const pending = queuedAdds.find(({ input }) => input.id === item.id);
-                      if (pending) void retryQueuedAdd(pending);
-                    }}>
-                      Retry
+                  {failedMessage && <span className="queued-item-error" role="status">{failedMessage}</span>}
+                </div>
+                {hasPendingMutation ? (
+                  <span className="item-status-label item-status-pending">{hasConflict ? 'Needs attention' : 'Waiting to sync'}</span>
+                ) : <span className={`item-status-label status-label-${item.status.toLowerCase()}`}>{statusLabels[item.status]}</span>}
+                {hasPendingMutation && (
+                  <>
+                    {queuedAdd?.failureMessage && (
+                      <button className="item-action-button" type="button" onClick={() => void retryQueuedAdd(queuedAdd)}>
+                        Retry
+                      </button>
+                    )}
+                    <button className="item-remove-button" type="button" aria-label={`Discard pending changes for ${item.text}`} onClick={() => void discardPendingItem(item.id)}>
+                      Discard
                     </button>
-                  )}
-                  <button className="item-remove-button" type="button" aria-label={`Discard pending ${item.text}`} onClick={() => {
-                    const pending = queuedAdds.find(({ input }) => input.id === item.id);
-                    if (pending) void discardQueuedAdd(pending);
-                  }}>
-                    Discard
+                  </>
+                )}
+                {canQueueStatus && item.status === 'NEEDED' && !pendingIds.has(item.id) && (
+                  <button className="item-action-button" type="button" disabled={busyId === item.id} onClick={() => void runItemAction(item, 'claim')}>
+                    {busyId === item.id ? '…' : navigator.onLine && !networkUnavailable ? 'I’ll get it' : 'Queue pickup'}
                   </button>
-                </>
-              )}
-              {role && canWriteShoppingList(role) && !networkUnavailable && !pendingIds.has(item.id) && item.status === 'NEEDED' && (
-                <button className="item-action-button" type="button" disabled={busyId === item.id} onClick={() => void runItemAction(item, 'claim')}>
-                  {busyId === item.id ? '…' : 'I’ll get it'}
-                </button>
-              )}
-              {role && canWriteShoppingList(role) && !networkUnavailable && item.status === 'CLAIMED' && (
-                <button className="item-action-button" type="button" disabled={busyId === item.id} onClick={() => void runItemAction(item, 'bought')}>
-                  {busyId === item.id ? '…' : 'Mark bought'}
-                </button>
-              )}
-              {role && canDeleteShoppingItem(role) && !networkUnavailable && !pendingIds.has(item.id) && (
-                <button className="item-remove-button" type="button" aria-label={`Remove ${item.text}`} disabled={busyId === item.id} onClick={() => void runItemAction(item, 'remove')}>
-                  Remove
-                </button>
-              )}
-            </li>
-          ))}
+                )}
+                {canQueueStatus && item.status === 'CLAIMED' && (
+                  <button className="item-action-button" type="button" disabled={busyId === item.id} onClick={() => void runItemAction(item, 'bought')}>
+                    {busyId === item.id ? '…' : navigator.onLine && !networkUnavailable ? 'Mark bought' : 'Queue as bought'}
+                  </button>
+                )}
+                {role && canDeleteShoppingItem(role) && navigator.onLine && !networkUnavailable && !hasPendingMutation && (
+                  <button className="item-remove-button" type="button" aria-label={`Remove ${item.text}`} disabled={busyId === item.id} onClick={() => void runItemAction(item, 'remove')}>
+                    Remove
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
       {role === 'VIEWER' && <p className="member-privacy-note">You can view this list, but only family and helpers can update it.</p>}

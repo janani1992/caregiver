@@ -10,15 +10,30 @@ export type OfflineShoppingSnapshot = {
   savedAt: string;
 };
 
-export type QueuedShoppingAdd = {
+type QueuedShoppingBase = {
   queueId: string;
   userId: string;
   circleId: string;
-  input: ShoppingItemInput;
   idempotencyKey: string;
   queuedAt: string;
+  sequence: number;
   failureMessage: string | null;
 };
+
+export type QueuedShoppingAdd = QueuedShoppingBase & {
+  operation: 'ADD';
+  input: ShoppingItemInput;
+};
+
+export type QueuedShoppingAction = QueuedShoppingBase & {
+  operation: 'CLAIM' | 'BOUGHT';
+  itemId: string;
+  expectedVersion: number | null;
+  itemSnapshot: ListItem;
+};
+
+export type QueuedShoppingOperation = QueuedShoppingAdd | QueuedShoppingAction;
+type NewQueuedShoppingOperation = Omit<QueuedShoppingAdd, 'sequence'> | Omit<QueuedShoppingAction, 'sequence'>;
 
 interface CareCircleOfflineDb extends DBSchema {
   shoppingSnapshots: {
@@ -27,17 +42,34 @@ interface CareCircleOfflineDb extends DBSchema {
   };
   shoppingQueue: {
     key: string;
-    value: QueuedShoppingAdd;
+    value: QueuedShoppingOperation;
+  };
+  shoppingQueueCounters: {
+    key: string;
+    value: { key: string; nextSequence: number };
   };
 }
 
 const DB_NAME = 'care-circle-offline';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const database = openDB<CareCircleOfflineDb>(DB_NAME, DB_VERSION, {
-  upgrade(db) {
-    db.createObjectStore('shoppingSnapshots', { keyPath: 'key' });
-    db.createObjectStore('shoppingQueue', { keyPath: 'queueId' });
+  upgrade(db, oldVersion, _newVersion, transaction) {
+    if (oldVersion < 1) {
+      db.createObjectStore('shoppingSnapshots', { keyPath: 'key' });
+      db.createObjectStore('shoppingQueue', { keyPath: 'queueId' });
+    }
+    if (oldVersion < 2) {
+      const counters = db.createObjectStore('shoppingQueueCounters', { keyPath: 'key' });
+      const queue = transaction.objectStore('shoppingQueue');
+      void queue.getAll().then((entries) => {
+        entries.sort((left, right) => left.queuedAt.localeCompare(right.queuedAt));
+        entries.forEach((entry, index) => {
+          queue.put({ ...entry, operation: entry.operation ?? 'ADD', sequence: index + 1 } as QueuedShoppingOperation);
+        });
+        counters.put({ key: 'sequence', nextSequence: entries.length });
+      });
+    }
   },
 });
 
@@ -70,33 +102,103 @@ export async function queueShoppingAdd(
   input: ShoppingItemInput,
   idempotencyKey: string,
 ): Promise<QueuedShoppingAdd> {
-  const queued: QueuedShoppingAdd = {
+  return putQueuedOperation({
     queueId: `${userId}:${circleId}:${input.id}`,
     userId,
     circleId,
+    operation: 'ADD',
     input,
     idempotencyKey,
     queuedAt: new Date().toISOString(),
     failureMessage: null,
-  };
+  }) as Promise<QueuedShoppingAdd>;
+}
+
+export async function queueShoppingAction(
+  userId: string,
+  circleId: string,
+  operation: QueuedShoppingAction['operation'],
+  itemSnapshot: ListItem,
+  idempotencyKey: string,
+): Promise<QueuedShoppingAction> {
+  const expectedVersion = operation === 'BOUGHT' ? itemSnapshot.version : null;
+  return putQueuedOperation({
+    queueId: `${userId}:${circleId}:${operation}:${itemSnapshot.id}:${idempotencyKey}`,
+    userId,
+    circleId,
+    operation,
+    itemId: itemSnapshot.id,
+    expectedVersion,
+    itemSnapshot,
+    idempotencyKey,
+    queuedAt: new Date().toISOString(),
+    failureMessage: null,
+  }) as Promise<QueuedShoppingAction>;
+}
+
+async function putQueuedOperation(
+  operation: NewQueuedShoppingOperation,
+): Promise<QueuedShoppingOperation> {
   const db = await database;
-  await db.put('shoppingQueue', queued);
+  const transaction = db.transaction(['shoppingQueue', 'shoppingQueueCounters'], 'readwrite');
+  const counterStore = transaction.objectStore('shoppingQueueCounters');
+  const counter = await counterStore.get('sequence');
+  const queued = { ...operation, sequence: (counter?.nextSequence ?? 0) + 1 } as QueuedShoppingOperation;
+  await counterStore.put({ key: 'sequence', nextSequence: queued.sequence });
+  await transaction.objectStore('shoppingQueue').put(queued);
+  await transaction.done;
   return queued;
 }
 
 export async function getQueuedShoppingAdds(userId: string, circleId: string): Promise<QueuedShoppingAdd[]> {
+  return (await getQueuedShoppingOperations(userId, circleId))
+    .filter((entry): entry is QueuedShoppingAdd => entry.operation === 'ADD');
+}
+
+export async function getQueuedShoppingActions(userId: string, circleId: string): Promise<QueuedShoppingAction[]> {
+  return (await getQueuedShoppingOperations(userId, circleId))
+    .filter((entry): entry is QueuedShoppingAction => entry.operation === 'CLAIM' || entry.operation === 'BOUGHT');
+}
+
+export async function getQueuedShoppingOperations(userId: string, circleId: string): Promise<QueuedShoppingOperation[]> {
   const db = await database;
   return (await db.getAll('shoppingQueue'))
     .filter((entry) => entry.userId === userId && entry.circleId === circleId)
-    .sort((left, right) => left.queuedAt.localeCompare(right.queuedAt));
+    .map((entry) => {
+      const legacyEntry = entry as unknown as Record<string, unknown> & {
+        operation?: QueuedShoppingOperation['operation'];
+        sequence?: number;
+      };
+      if (legacyEntry.operation) return legacyEntry as unknown as QueuedShoppingOperation;
+      return { ...legacyEntry, operation: 'ADD', sequence: legacyEntry.sequence ?? 0 } as unknown as QueuedShoppingAdd;
+    })
+    .sort((left, right) => left.sequence - right.sequence || left.queuedAt.localeCompare(right.queuedAt));
 }
 
 export async function removeQueuedShoppingAdd(queueId: string): Promise<void> {
+  return removeQueuedShoppingOperation(queueId);
+}
+
+export async function removeQueuedShoppingOperation(queueId: string): Promise<void> {
   const db = await database;
   await db.delete('shoppingQueue', queueId);
 }
 
+export async function removeQueuedShoppingActionsForItem(userId: string, circleId: string, itemId: string): Promise<void> {
+  const db = await database;
+  const actions = await getQueuedShoppingActions(userId, circleId);
+  const transaction = db.transaction('shoppingQueue', 'readwrite');
+  for (const action of actions.filter((entry) => entry.itemId === itemId)) {
+    void transaction.store.delete(action.queueId);
+  }
+  await transaction.done;
+}
+
 export async function markQueuedShoppingAddFailed(queueId: string, failureMessage: string): Promise<void> {
+  return markQueuedShoppingOperationFailed(queueId, failureMessage);
+}
+
+export async function markQueuedShoppingOperationFailed(queueId: string, failureMessage: string): Promise<void> {
   const db = await database;
   const entry = await db.get('shoppingQueue', queueId);
   if (entry) await db.put('shoppingQueue', { ...entry, failureMessage });

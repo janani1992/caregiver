@@ -207,6 +207,8 @@ The lifecycle is `OPEN -> ON_IT -> RESOLVED`. `SEEN` is tracked per member and d
 - `GET /v1/circles/{id}/sync/pull?since=<seq>` returns the change feed
 - `GET /v1/circles/{id}/stream` opens an SSE stream of `change_seq` events
 
+The current PWA offline slice is narrower than this planned sync API: the service worker caches only the app shell and static assets, and `/v1` responses are never cached. IndexedDB stores shopping-list snapshots per user and circle and an ordered queue for `ADD`, `CLAIM`, and `BOUGHT` operations. Each operation retains its original idempotency key; a queued `BOUGHT` also retains the expected item version. Retryable failures stop replay so later operations keep their order. Non-retryable failures remain visible for review and block later queued operations for the same item until the user discards them. Removal, Care Log, and urgent requests remain online-only. The server rechecks membership and role on every replay; cached UI permissions are not authorization. IndexedDB is device-local and not application-encrypted, so shared devices should be treated accordingly. A general change feed and cross-device reconciliation remain future work.
+
 ### Media and privacy
 - `POST /v1/media/upload-url` returns a signed upload URL
 - `GET /v1/me/export`, `DELETE /v1/circles/{id}`

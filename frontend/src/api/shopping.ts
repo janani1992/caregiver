@@ -75,20 +75,23 @@ export function isShoppingAccessRevoked(error: unknown): boolean {
   return error instanceof ShoppingApiError && [401, 403, 404].includes(error.status);
 }
 
-export async function claimShoppingItem(itemId: string): Promise<ListItem> {
+export async function claimShoppingItem(itemId: string, idempotencyKey: string = crypto.randomUUID()): Promise<ListItem> {
   const response = await fetch(`/v1/items/${itemId}/claim`, {
     method: 'POST',
-    headers: headers(crypto.randomUUID()),
+    headers: headers(idempotencyKey),
   });
   if (!response.ok) throw await getError(response);
   return response.json() as Promise<ListItem>;
 }
 
-export async function markShoppingItemBought(item: ListItem): Promise<ListItem> {
+export async function markShoppingItemBought(
+  item: ListItem,
+  idempotencyKey: string = crypto.randomUUID(),
+): Promise<ListItem> {
   const response = await fetch(`/v1/items/${item.id}/status`, {
     method: 'POST',
     headers: {
-      ...headers(crypto.randomUUID()),
+      ...headers(idempotencyKey),
       'Content-Type': 'application/json',
       'If-Match': String(item.version),
     },
